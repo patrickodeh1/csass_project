@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}Deactivate User - CSASS{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-danger text-white">
+                    <h4 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Deactivate User</h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        <strong>Are you sure you want to deactivate this user?</strong>
+                        <div class="mt-3">
+                            <p class="mb-1"><strong>Name:</strong> {{ user.get_full_name }}</p>
+                            <p class="mb-1"><strong>Email:</strong> {{ user.email }}</p>
+                            <p class="mb-1"><strong>Employee ID:</strong> {{ user.profile.employee_id }}</p>
+                            <p class="mb-0"><strong>Roles:</strong> 
+                                {% for group in user.groups.all %}
+                                    {{ group.name }}{% if not forloop.last %}, {% endif %}
+                                {% endfor %}
+                            </p>
+                        </div>
+                        <div class="mt-3">
+                            <p class="mb-0"><small>This will prevent the user from logging in. Historical data will be preserved.</small></p>
+                        </div>
+                    </div>
+
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="d-flex gap-2 justify-content-end">
+                            <a href="{% url 'users' %}" class="btn btn-secondary">
+                                <i class="bi bi-arrow-left"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bi bi-person-x"></i> Confirm Deactivate
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

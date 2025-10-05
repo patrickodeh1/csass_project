@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+
+{% block title %}Manage Availability - CSASS{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-clock"></i> Manage Availability</h2>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'availability_create' %}{% if is_admin and salesman %}?salesman={{ salesman.id }}{% endif %}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> Add Unavailability
+            </a>
+        </div>
+    </div>
+
+    {% if is_admin and salesmen %}
+    <div class="card mb-4">
+        <div class="card-body">
+            <label class="form-label">Select Salesman:</label>
+            <select class="form-select" onchange="window.location.href='?salesman=' + this.value">
+                <option value="">My Availability</option>
+                {% for s in salesmen %}
+                <option value="{{ s.id }}" {% if salesman.id == s.id %}selected{% endif %}>
+                    {{ s.get_full_name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card shadow">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">Unavailability Blocks for {{ salesman.get_full_name }}</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Start Date</th>
+                            <th>End Date</th>
+                            <th>Time</th>
+                            <th>Reason</th>
+                            <th>Notes</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for block in blocks %}
+                        <tr>
+                            <td>{{ block.start_date|date:"M d, Y" }}</td>
+                            <td>{{ block.end_date|date:"M d, Y" }}</td>
+                            <td>{{ block.start_time|date:"g:i A" }} - {{ block.end_time|date:"g:i A" }}</td>
+                            <td>
+                                <span class="badge bg-secondary">
+                                    {{ block.get_reason_display }}
+                                </span>
+                            </td>
+                            <td>{{ block.notes|truncatewords:10 }}</td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'availability_edit' block.id %}" class="btn btn-outline-primary">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="{% url 'availability_delete' block.id %}" class="btn btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                <i class="bi bi-calendar-check" style="font-size: 2rem;"></i>
+                                <p class="mt-2">No unavailability blocks set</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+
+{% block title %}My Commissions - CSASS{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4"><i class="bi bi-currency-dollar"></i> My Commissions</h2>
+
+    <!-- Week Selector -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <label class="form-label">Select Pay Period:</label>
+                    <select class="form-select" onchange="window.location.href='?week=' + this.value">
+                        {% for week in available_weeks %}
+                        <option value="{{ forloop.counter0 }}" {% if week_offset == forloop.counter0 %}selected{% endif %}>
+                            {{ week.label }}
+                            {% if week.is_finalized %}(Finalized){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% if users %}
+                <div class="col-md-6">
+                    <label class="form-label">Filter by User (Admin):</label>
+                    <select class="form-select" onchange="window.location.href='?week={{ week_offset }}&user=' + this.value">
+                        <option value="">All Users</option>
+                        {% for user in users %}
+                        <option value="{{ user.id }}">{{ user.get_full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Card -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card bg-primary text-white shadow">
+                <div class="card-body text-center">
+                    <h5 class="card-title">This Week</h5>
+                    <h2 class="display-4 mb-0">${{ total_commission }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-success text-white shadow">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Total Bookings</h5>
+                    <h2 class="display-4 mb-0">{{ total_bookings }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-info text-white shadow">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Pay Period</h5>
+                    <p class="mb-0">{{ start_date|date:"M d" }} - {{ end_date|date:"M d, Y" }}</p>
+                    {% if payroll_period and payroll_period.status == 'finalized' %}
+                    <span class="badge bg-warning text-dark mt-2">
+                        <i class="bi bi-lock-fill"></i> Finalized
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bookings Table -->
+    <div class="card shadow">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">Booking Details</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Client</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th class="text-end">Commission</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for booking in bookings %}
+                        <tr {% if booking.status == 'canceled' %}class="text-muted text-decoration-line-through"{% endif %}>
+                            <td>{{ booking.appointment_date|date:"M d, Y" }}</td>
+                            <td>{{ booking.appointment_time|date:"g:i A" }}</td>
+                            <td>{{ booking.client.first_name }} {{ booking.client.last_name|first }}.</td>
+                            <td>
+                                <span class="badge bg-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning{% endif %}">
+                                    {{ booking.get_appointment_type_display }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-{% if booking.status == 'confirmed' %}success{% elif booking.status == 'completed' %}secondary{% else %}danger{% endif %}">
+                                    {{ booking.get_status_display }}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                {% if booking.counts_for_commission %}
+                                <strong>${{ booking.commission_amount }}</strong>
+                                {% else %}
+                                <span class="text-muted">$0.00</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                                <p class="mt-2">No bookings for this period</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <th colspan="5" class="text-end">Total Commission:</th>
+                            <th class="text-end">${{ total_commission }}</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

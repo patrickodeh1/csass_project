@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}System Settings - CSASS{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-sliders"></i> System Settings</h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <h6 class="border-bottom pb-2 mb-3">General Settings</h6>
+                        <div class="mb-3">
+                            <label for="{{ form.company_name.id_for_label }}" class="form-label">Company Name</label>
+                            {{ form.company_name }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.timezone.id_for_label }}" class="form-label">Timezone</label>
+                            {{ form.timezone }}
+                            <small class="form-text text-muted">e.g., America/New_York, UTC, Asia/Tokyo</small>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">Commission Settings</h6>
+                        <div class="mb-3">
+                            <label for="{{ form.default_commission_rate.id_for_label }}" class="form-label">Default Commission Rate</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                {{ form.default_commission_rate }}
+                            </div>
+                            <small class="form-text text-muted">Default commission per confirmed booking</small>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">Booking Settings</h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.buffer_time_minutes.id_for_label }}" class="form-label">Buffer Time (minutes)</label>
+                                {{ form.buffer_time_minutes }}
+                                <small class="form-text text-muted">Time blocked after each appointment</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.min_advance_booking_hours.id_for_label }}" class="form-label">Min Advance Booking (hours)</label>
+                                {{ form.min_advance_booking_hours }}
+                                <small class="form-text text-muted">Minimum notice required</small>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.max_advance_booking_days.id_for_label }}" class="form-label">Max Advance Booking (days)</label>
+                            {{ form.max_advance_booking_days }}
+                            <small class="form-text text-muted">How far ahead bookings can be made</small>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3 mt-4">Notification Settings</h6>
+                        <div class="mb-3">
+                            <label for="{{ form.reminder_lead_time_hours.id_for_label }}" class="form-label">Reminder Lead Time (hours)</label>
+                            {{ form.reminder_lead_time_hours }}
+                            <small class="form-text text-muted">How long before appointment to send reminder</small>
+                        </div>
+
+                        <div class="d-flex gap-2 justify-content-end">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save"></i> Save Settings
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card shadow mb-3">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0">Current Configuration</h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2"><strong>Company:</strong> {{ config.company_name }}</p>
+                    <p class="mb-2"><strong>Commission:</strong> ${{ config.default_commission_rate }}</p>
+                    <p class="mb-2"><strong>Buffer:</strong> {{ config.buffer_time_minutes }} min</p>
+                    <p class="mb-0"><strong>Last Updated:</strong><br>
+                        <small>{{ config.updated_at|date:"M d, Y g:i A" }}</small>
+                    </p>
+                </div>
+            </div>
+
+            <div class="card shadow">
+                <div class="card-header bg-warning text-dark">
+                    <h6 class="mb-0"><i class="bi bi-info-circle"></i> Important</h6>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0 ps-3">
+                        <li>Commission rate changes affect new bookings only</li>
+                        <li>Buffer time prevents back-to-back appointments</li>
+                        <li>Reminder emails sent via cron job</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

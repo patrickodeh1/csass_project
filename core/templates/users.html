@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}User Management - CSASS{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-people"></i> User Management</h2>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'user_create' %}" class="btn btn-primary">
+                <i class="bi bi-person-plus"></i> Add User
+            </a>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Role</label>
+                    <select name="role" class="form-select" onchange="this.form.submit()">
+                        <option value="">All Roles</option>
+                        <option value="sales_support" {% if role_filter == 'sales_support' %}selected{% endif %}>Sales Support</option>
+                        <option value="salesman" {% if role_filter == 'salesman' %}selected{% endif %}>Salesman</option>
+                        <option value="admin" {% if role_filter == 'admin' %}selected{% endif %}>Administrator</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+                        <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="card shadow">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Employee ID</th>
+                            <th>Roles</th>
+                            <th>Status</th>
+                            <th>Hire Date</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr {% if not user.is_active %}class="text-muted"{% endif %}>
+                            <td>
+                                <strong>{{ user.get_full_name }}</strong>
+                                {% if user.profile.is_active_salesman %}
+                                <span class="badge bg-info ms-2">Salesman</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ user.email }}</td>
+                            <td><code>{{ user.profile.employee_id }}</code></td>
+                            <td>
+                                {% for group in user.groups.all %}
+                                <span class="badge bg-secondary">{{ group.name }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                {% if user.is_active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-danger">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ user.profile.hire_date|date:"M d, Y" }}</td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'user_edit' user.id %}" class="btn btn-outline-primary">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    {% if user.is_active %}
+                                    <a href="{% url 'user_deactivate' user.id %}" class="btn btn-outline-danger">
+                                        <i class="bi bi-person-x"></i>
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="bi bi-people" style="font-size: 2rem;"></i>
+                                <p class="mt-2">No users found</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

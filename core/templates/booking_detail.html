@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+
+{% block title %}Booking Details - CSASS{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0"><i class="bi bi-info-circle"></i> Booking Details</h4>
+                    <span class="badge bg-{% if booking.status == 'confirmed' %}success{% elif booking.status == 'completed' %}secondary{% else %}danger{% endif %}">
+                        {{ booking.get_status_display }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-3">Client Information</h6>
+                            <p class="mb-2"><strong>Name:</strong> {{ booking.client.first_name }} {{ booking.client.last_name }}</p>
+                            <p class="mb-2"><strong>Email:</strong> {{ booking.client.email }}</p>
+                            <p class="mb-2"><strong>Phone:</strong> {{ booking.client.phone_number }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-3">Appointment Details</h6>
+                            <p class="mb-2"><strong>Date:</strong> {{ booking.appointment_date|date:"l, F d, Y" }}</p>
+                            <p class="mb-2"><strong>Time:</strong> {{ booking.appointment_time|date:"g:i A" }}</p>
+                            <p class="mb-2"><strong>Duration:</strong> {{ booking.duration_minutes }} minutes</p>
+                            <p class="mb-2">
+                                <strong>Type:</strong> 
+                                <span class="badge bg-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning{% endif %}">
+                                    {{ booking.get_appointment_type_display }}
+                                </span>
+                            </p>
+                            {% if booking.zoom_link %}
+                            <p class="mb-2">
+                                <strong>Zoom Link:</strong> 
+                                <a href="{{ booking.zoom_link }}" target="_blank">{{ booking.zoom_link }}</a>
+                            </p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-3">Salesman</h6>
+                            <p class="mb-2"><strong>Name:</strong> {{ booking.salesman.get_full_name }}</p>
+                            <p class="mb-2"><strong>Email:</strong> {{ booking.salesman.email }}</p>
+                            <p class="mb-2"><strong>Commission:</strong> ${{ booking.commission_amount }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted mb-3">Booking Information</h6>
+                            <p class="mb-2"><strong>Created By:</strong> {{ booking.created_by.get_full_name }}</p>
+                            <p class="mb-2"><strong>Created At:</strong> {{ booking.created_at|date:"M d, Y g:i A" }}</p>
+                            {% if booking.is_locked %}
+                            <p class="mb-2">
+                                <span class="badge bg-warning text-dark">
+                                    <i class="bi bi-lock-fill"></i> Locked (Payroll Finalized)
+                                </span>
+                            </p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {% if booking.notes %}
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">Notes</h6>
+                        <p class="bg-light p-3 rounded">{{ booking.notes }}</p>
+                    </div>
+                    {% endif %}
+
+                    {% if booking.status == 'canceled' %}
+                    <div class="alert alert-danger">
+                        <h6><i class="bi bi-x-circle"></i> Cancellation Information</h6>
+                        <p class="mb-1"><strong>Reason:</strong> {{ booking.get_cancellation_reason_display }}</p>
+                        <p class="mb-1"><strong>Canceled By:</strong> {{ booking.canceled_by.get_full_name }}</p>
+                        <p class="mb-1"><strong>Canceled At:</strong> {{ booking.canceled_at|date:"M d, Y g:i A" }}</p>
+                        {% if booking.cancellation_notes %}
+                        <p class="mb-0"><strong>Notes:</strong> {{ booking.cancellation_notes }}</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    <div class="d-flex gap-2 justify-content-end">
+                        <a href="{% url 'calendar' %}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Calendar
+                        </a>
+                        {% if booking.is_editable %}
+                        <a href="{% url 'booking_edit' booking.id %}" class="btn btn-primary">
+                            <i class="bi bi-pencil"></i> Edit
+                        </a>
+                        {% if booking.status != 'canceled' %}
+                        <a href="{% url 'booking_cancel' booking.id %}" class="btn btn-danger">
+                            <i class="bi bi-x-circle"></i> Cancel
+                        </a>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,205 @@
+{% extends 'base.html' %}
+
+{% block title %}Calendar - CSASS{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-calendar3"></i> Appointment Calendar</h2>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'booking_create' %}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> New Booking
+            </a>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">View Mode</label>
+                    <select name="view" class="form-select" onchange="this.form.submit()">
+                        <option value="month" {% if view_mode == 'month' %}selected{% endif %}>Month</option>
+                        <option value="week" {% if view_mode == 'week' %}selected{% endif %}>Week</option>
+                        <option value="day" {% if view_mode == 'day' %}selected{% endif %}>Day</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Salesman</label>
+                    <select name="salesman" class="form-select" onchange="this.form.submit()">
+                        <option value="">All Salesmen</option>
+                        {% for salesman in salesmen %}
+                        <option value="{{ salesman.id }}" {% if selected_salesman == salesman.id|stringformat:"s" %}selected{% endif %}>
+                            {{ salesman.get_full_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Type</label>
+                    <select name="type" class="form-select" onchange="this.form.submit()">
+                        <option value="">All Types</option>
+                        <option value="zoom" {% if selected_type == 'zoom' %}selected{% endif %}>Zoom</option>
+                        <option value="in_person" {% if selected_type == 'in_person' %}selected{% endif %}>In-Person</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Date</label>
+                    <input type="date" name="date" class="form-control" value="{{ current_date|date:'Y-m-d' }}" onchange="this.form.submit()">
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Calendar Display -->
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h5 class="mb-0">
+                        {{ start_date|date:"F Y" }}
+                        {% if view_mode == 'week' %} - Week of {{ start_date|date:"M d" }}{% endif %}
+                        {% if view_mode == 'day' %} - {{ current_date|date:"l, F d, Y" }}{% endif %}
+                    </h5>
+                </div>
+                <div class="col-auto">
+                    <a href="?date={{ start_date|date:'Y-m-d' }}&view={{ view_mode }}" class="btn btn-light btn-sm">
+                        <i class="bi bi-arrow-left"></i>
+                    </a>
+                    <a href="?view={{ view_mode }}" class="btn btn-light btn-sm">Today</a>
+                    <a href="?date={{ end_date|date:'Y-m-d' }}&view={{ view_mode }}" class="btn btn-light btn-sm">
+                        <i class="bi bi-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            {% if view_mode == 'month' %}
+            <!-- Month View -->
+            <div class="table-responsive">
+                <table class="table table-bordered calendar-table">
+                    <thead>
+                        <tr>
+                            <th>Sunday</th>
+                            <th>Monday</th>
+                            <th>Tuesday</th>
+                            <th>Wednesday</th>
+                            <th>Thursday</th>
+                            <th>Friday</th>
+                            <th>Saturday</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- TODO: Generate calendar grid with bookings -->
+                        <tr>
+                            <td class="calendar-day" style="height: 120px; vertical-align: top;">
+                                <div class="fw-bold mb-2">1</div>
+                                {% for booking in bookings %}
+                                {% if booking.appointment_date.day == 1 %}
+                                <div class="badge bg-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning{% endif %} mb-1 text-truncate" 
+                                     style="cursor: pointer;" onclick="window.location.href='{% url 'booking_detail' booking.id %}'">
+                                    {{ booking.appointment_time|date:"g:i A" }} - {{ booking.client.first_name }} {{ booking.client.last_name }}
+                                </div>
+                                {% endif %}
+                                {% endfor %}
+                            </td>
+                            <!-- Repeat for other days -->
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            {% elif view_mode == 'week' %}
+            <!-- Week View -->
+            <div class="row">
+                {% for booking in bookings %}
+                <div class="col-md-12 mb-2">
+                    <div class="card border-start border-5 border-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning{% endif %}">
+                        <div class="card-body py-2">
+                            <div class="row align-items-center">
+                                <div class="col-md-2">
+                                    <strong>{{ booking.appointment_date|date:"D, M d" }}</strong>
+                                </div>
+                                <div class="col-md-2">
+                                    {{ booking.appointment_time|date:"g:i A" }}
+                                </div>
+                                <div class="col-md-3">
+                                    {{ booking.client.first_name }} {{ booking.client.last_name }}
+                                </div>
+                                <div class="col-md-2">
+                                    {{ booking.salesman.get_full_name }}
+                                </div>
+                                <div class="col-md-2">
+                                    <span class="badge bg-{% if booking.status == 'confirmed' %}success{% elif booking.status == 'completed' %}secondary{% else %}danger{% endif %}">
+                                        {{ booking.get_status_display }}
+                                    </span>
+                                </div>
+                                <div class="col-md-1 text-end">
+                                    <a href="{% url 'booking_detail' booking.id %}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="col-12 text-center text-muted py-5">
+                    <i class="bi bi-calendar-x" style="font-size: 3rem;"></i>
+                    <p class="mt-3">No bookings for this week</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <!-- Day View -->
+            <div class="list-group">
+                {% for booking in bookings %}
+                <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">
+                            <span class="badge bg-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning{% endif %} me-2">
+                                {{ booking.get_appointment_type_display }}
+                            </span>
+                            {{ booking.appointment_time|date:"g:i A" }} - {{ booking.client.first_name }} {{ booking.client.last_name }}
+                        </h6>
+                        <small>{{ booking.salesman.get_full_name }}</small>
+                    </div>
+                    <p class="mb-1">{{ booking.notes|truncatewords:15 }}</p>
+                    <small class="text-muted">Status: {{ booking.get_status_display }}</small>
+                </a>
+                {% empty %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-calendar-x" style="font-size: 3rem;"></i>
+                    <p class="mt-3">No bookings for this day</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="mt-3">
+        <span class="badge bg-primary me-2"><i class="bi bi-circle-fill"></i> Zoom</span>
+        <span class="badge bg-warning text-dark me-2"><i class="bi bi-circle-fill"></i> In-Person</span>
+        <span class="badge bg-success me-2"><i class="bi bi-circle-fill"></i> Confirmed</span>
+        <span class="badge bg-secondary me-2"><i class="bi bi-circle-fill"></i> Completed</span>
+        <span class="badge bg-danger me-2"><i class="bi bi-circle-fill"></i> Canceled</span>
+        <span class="badge bg-dark me-2"><i class="bi bi-circle-fill"></i> Unavailable</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.calendar-table td {
+    padding: 8px;
+    vertical-align: top;
+}
+.calendar-day {
+    min-height: 100px;
+}
+</style>
+{% endblock %}

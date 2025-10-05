@@ -1,0 +1,113 @@
+"""
+{% extends 'base.html' %}
+
+{% block title %}{{ title }} - CSASS{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="bi bi-person"></i> {{ title }}</h4>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <h5 class="border-bottom pb-2 mb-3">Personal Information</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.first_name.id_for_label }}" class="form-label">First Name *</label>
+                                <input type="text" name="first_name" class="form-control" value="{{ form.first_name.value|default:'' }}" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.last_name.id_for_label }}" class="form-label">Last Name *</label>
+                                <input type="text" name="last_name" class="form-control" value="{{ form.last_name.value|default:'' }}" required>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.email.id_for_label }}" class="form-label">Email *</label>
+                                <input type="email" name="email" class="form-control" value="{{ form.email.value|default:'' }}" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.phone_number.id_for_label }}" class="form-label">Phone Number *</label>
+                                <input type="text" name="phone_number" class="form-control" value="{{ form.phone_number.value|default:'' }}" required>
+                            </div>
+                        </div>
+
+                        <h5 class="border-bottom pb-2 mb-3 mt-4">Employment Information</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.employee_id.id_for_label }}" class="form-label">Employee ID *</label>
+                                <input type="text" name="employee_id" class="form-control" value="{{ form.employee_id.value|default:'' }}" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.hire_date.id_for_label }}" class="form-label">Hire Date *</label>
+                                <input type="date" name="hire_date" class="form-control" value="{{ form.hire_date.value|default:'' }}" required>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.commission_rate.id_for_label }}" class="form-label">Commission Rate Override</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" name="commission_rate" class="form-control" step="0.01" value="{{ form.commission_rate.value|default:'' }}" placeholder="Leave blank for system default">
+                                </div>
+                                <small class="form-text text-muted">Leave blank to use system default rate</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Status</label>
+                                <div class="form-check">
+                                    <input type="checkbox" name="is_active" class="form-check-input" id="is_active" {% if form.is_active.value %}checked{% endif %}>
+                                    <label class="form-check-label" for="is_active">Active</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" name="is_active_salesman" class="form-check-input" id="is_active_salesman" {% if form.is_active_salesman.value %}checked{% endif %}>
+                                    <label class="form-check-label" for="is_active_salesman">Active Salesman</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h5 class="border-bottom pb-2 mb-3 mt-4">Roles & Permissions</h5>
+                        <div class="mb-3">
+                            <label class="form-label">Assign Roles</label>
+                            <div class="form-check">
+                                <input type="checkbox" name="roles" value="sales_support" class="form-check-input" id="role_sales_support"
+                                       {% if 'sales_support' in form.roles.value %}checked{% endif %}>
+                                <label class="form-check-label" for="role_sales_support">
+                                    <strong>Sales Support</strong> - Can book appointments and view own commissions
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" name="roles" value="salesman" class="form-check-input" id="role_salesman"
+                                       {% if 'salesman' in form.roles.value %}checked{% endif %}>
+                                <label class="form-check-label" for="role_salesman">
+                                    <strong>Salesman</strong> - Can manage own availability
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" name="roles" value="admin" class="form-check-input" id="role_admin"
+                                       {% if 'admin' in form.roles.value %}checked{% endif %}>
+                                <label class="form-check-label" for="role_admin">
+                                    <strong>Administrator</strong> - Full system access
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 justify-content-end">
+                            <a href="{% url 'users' %}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Save User
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
