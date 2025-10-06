@@ -5,7 +5,9 @@ cryptography==46.0.2
 Django==5.2.7
 django-crispy-forms==2.1
 django-sendgrid-v5==1.3.0
+gunicorn==23.0.0
 MarkupSafe==3.0.3
+packaging==25.0
 Pillow==10.1.0
 psycopg2-binary==2.9.9
 pycparser==2.23
