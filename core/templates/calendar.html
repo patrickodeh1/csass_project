@@ -77,40 +77,46 @@
             </div>
         </div>
         <div class="card-body">
-            {% if view_mode == 'month' %}
             <!-- Month View -->
+            {% if view_mode == 'month' %}
             <div class="table-responsive">
                 <table class="table table-bordered calendar-table">
                     <thead>
-                        <tr>
-                            <th>Sunday</th>
-                            <th>Monday</th>
-                            <th>Tuesday</th>
-                            <th>Wednesday</th>
-                            <th>Thursday</th>
-                            <th>Friday</th>
-                            <th>Saturday</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- TODO: Generate calendar grid with bookings -->
-                        <tr>
-                            <td class="calendar-day" style="height: 120px; vertical-align: top;">
-                                <div class="fw-bold mb-2">1</div>
-                                {% for booking in bookings %}
-                                {% if booking.appointment_date.day == 1 %}
-                                <div class="badge bg-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning{% endif %} mb-1 text-truncate" 
-                                     style="cursor: pointer;" onclick="window.location.href='{% url 'booking_detail' booking.id %}'">
-                                    {{ booking.appointment_time|date:"g:i A" }} - {{ booking.client.first_name }} {{ booking.client.last_name }}
-                                </div>
-                                {% endif %}
+                            <tr>
+                                <th>Sunday</th>
+                                <th>Monday</th>
+                                <th>Tuesday</th>
+                                <th>Wednesday</th>
+                                <th>Thursday</th>
+                                <th>Friday</th>
+                                <th>Saturday</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for week in calendar_weeks %}
+                            <tr>
+                                {% for day in week %}
+                                <td class="calendar-day" style="height: 120px; vertical-align: top; {% if day == 0 %}background-color: #f8f9fa;{% endif %}">
+                                    {% if day != 0 %}
+                                        <div class="fw-bold mb-2">{{ day }}</div>
+                                        
+                                        {% for booking in bookings %}
+                                            {% if booking.appointment_date.day == day and booking.appointment_date.month == current_date.month %}
+                                            <div class="badge bg-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning{% endif %} text-dark mb-1 text-truncate w-100" 
+                                                style="cursor: pointer; font-size: 0.65rem; text-align: left;" 
+                                                onclick="window.location.href='{% url 'booking_detail' booking.id %}'">
+                                                {{ booking.appointment_time|date:"g:iA" }} {{ booking.client.first_name }}
+                                            </div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% endif %}
+                                </td>
                                 {% endfor %}
-                            </td>
-                            <!-- Repeat for other days -->
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             {% elif view_mode == 'week' %}
             <!-- Week View -->
             <div class="row">

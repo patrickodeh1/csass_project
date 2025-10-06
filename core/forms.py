@@ -1,31 +1,335 @@
 from django import forms
-from django.contrib.auth.models import User, Group
-from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, PasswordResetForm, SetPasswordForm
+from django.contrib.auth.models import Group
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Submit, Row, Column, Field, Div, HTML
-from .models import Booking, Client, Unavailability, UserProfile, PayrollAdjustment, SystemConfig
+from .models import Booking, Client, Unavailability, PayrollAdjustment, SystemConfig, User
 from datetime import datetime, timedelta
+import logging
+from .utils import check_booking_conflicts, check_unavailability_conflicts
+from django.db import transaction
+
+logger = logging.getLogger(__name__)
+
+class UserForm(forms.ModelForm):
+    username = forms.CharField(
+        max_length=150, 
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        help_text='Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.'
+    )
+    first_name = forms.CharField(max_length=100, required=True, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    last_name = forms.CharField(max_length=100, required=True, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    email = forms.EmailField(required=True, widget=forms.EmailInput(attrs={'class': 'form-control'}))
+    phone_number = forms.CharField(max_length=20, required=True, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    commission_rate = forms.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        required=False, 
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'})
+    )
+    is_active_salesman = forms.BooleanField(required=False)
+    hire_date = forms.DateField(widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}))
+    
+    password = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control', 
+            'placeholder': 'Leave blank to keep current password'
+        }),
+        help_text='Leave blank if password is set programmatically.'
+    )
+    password_confirm = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control', 
+            'placeholder': 'Confirm password'
+        }),
+        label='Confirm Password'
+    )
+    
+    roles = forms.MultipleChoiceField(
+        choices=[
+            ('sales_support', 'Sales Support'), 
+            ('salesman', 'Salesman'), 
+            ('admin', 'Administrator')
+        ],
+        widget=forms.CheckboxSelectMultiple,
+        required=False
+    )
+    
+    class Meta:
+        model = User
+        fields = ['username', 'first_name', 'last_name', 'email', 'phone_number',
+                  'commission_rate', 'is_active_salesman', 'hire_date', 'is_active']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        if self.instance and self.instance.pk:
+            # Editing existing user
+            self.fields['phone_number'].initial = self.instance.phone_number
+            self.fields['commission_rate'].initial = self.instance.commission_rate
+            self.fields['is_active_salesman'].initial = self.instance.is_active_salesman
+            self.fields['hire_date'].initial = self.instance.hire_date
+            user_groups = list(self.instance.groups.values_list('name', flat=True))
+            self.fields['roles'].initial = user_groups
+            self.fields['password'].help_text = 'Leave blank to keep current password.'
+        else:
+            # Creating new user
+            self.fields['password'].help_text = 'Leave blank if password is set programmatically.'
+    
+    def clean_username(self):
+        username = self.cleaned_data.get('username')
+        if not self.instance.pk:
+            if User.objects.filter(username=username).exists():
+                raise forms.ValidationError("A user with this username already exists.")
+        else:
+            if User.objects.filter(username=username).exclude(pk=self.instance.pk).exists():
+                raise forms.ValidationError("A user with this username already exists.")
+        return username
+    
+    def clean_email(self):
+        email = self.cleaned_data.get('email')
+        if not self.instance.pk:
+            if User.objects.filter(email=email).exists():
+                raise forms.ValidationError("A user with this email already exists.")
+        else:
+            if User.objects.filter(email=email).exclude(pk=self.instance.pk).exists():
+                raise forms.ValidationError("A user with this email already exists.")
+        return email
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get('password')
+        password_confirm = cleaned_data.get('password_confirm')
+        
+        if password and password_confirm:
+            if password != password_confirm:
+                raise forms.ValidationError("Passwords do not match.")
+        elif password and not password_confirm:
+            raise forms.ValidationError("Please confirm the password.")
+        elif password_confirm and not password:
+            raise forms.ValidationError("Please enter a password.")
+        
+        return cleaned_data
+    
+   
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        
+        # Set password only if provided in form data
+        password = self.cleaned_data.get('password')
+        if password:
+            user.set_password(password)
+        
+        # Set additional fields
+        user.phone_number = self.cleaned_data['phone_number']
+        user.commission_rate = self.cleaned_data.get('commission_rate')
+        user.is_active_salesman = self.cleaned_data.get('is_active_salesman', False)
+        user.hire_date = self.cleaned_data['hire_date']
+        
+        # AUTO-GENERATE employee_id for new users only
+        if not self.instance.pk:
+            if not user.employee_id:
+                with transaction.atomic():
+                    # Find the highest existing employee number
+                    max_attempts = 100
+                    for attempt in range(max_attempts):
+                        # Get all existing employee IDs that match the pattern
+                        existing_ids = User.objects.filter(
+                            employee_id__startswith='EMP'
+                        ).values_list('employee_id', flat=True)
+                        
+                        # Extract numbers from existing IDs
+                        numbers = []
+                        for emp_id in existing_ids:
+                            try:
+                                num = int(emp_id.replace('EMP', ''))
+                                numbers.append(num)
+                            except (ValueError, AttributeError):
+                                continue
+                        
+                        # Find next available number
+                        if numbers:
+                            new_number = max(numbers) + 1
+                        else:
+                            new_number = 1
+                        
+                        new_employee_id = f'EMP{new_number:05d}'
+                        
+                        # Check if this ID already exists (race condition protection)
+                        if not User.objects.filter(employee_id=new_employee_id).exists():
+                            user.employee_id = new_employee_id
+                            logger.debug(f"Assigned employee_id: {user.employee_id}")
+                            break
+                    else:
+                        # If we exhausted all attempts
+                        raise forms.ValidationError("Unable to generate unique employee ID. Please try again.")
+        
+        if commit:
+            try:
+                user.save()
+                logger.info(f"User saved: {user.username}, Employee ID: {user.employee_id}")
+                
+                # Update groups
+                user.groups.clear()
+                for role in self.cleaned_data.get('roles', []):
+                    group, created = Group.objects.get_or_create(name=role)
+                    user.groups.add(group)
+            except Exception as e:
+                logger.error(f"Error saving user: {str(e)}")
+                raise forms.ValidationError(f"Error saving user: {str(e)}")
+        
+        return user
+
 
 class LoginForm(AuthenticationForm):
-    username = forms.EmailField(
-        label='Email Address',
-        widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'Email'})
+    username = forms.CharField(
+        label='Username',
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Username', 'autofocus': True})
     )
     password = forms.CharField(
         widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Password'})
     )
-    remember_me = forms.BooleanField(required=False, initial=False)
+    remember_me = forms.BooleanField(required=False, initial=False, label='Remember Me')
+    
+    def confirm_login_allowed(self, user):
+        """Check if user account is locked before allowing login"""
+        if user.is_account_locked():
+            raise forms.ValidationError(
+                'Account is locked due to too many failed login attempts. Please try again in 30 minutes.',
+                code='account_locked',
+            )
+        
+        if not user.is_active:
+            raise forms.ValidationError(
+                'This account is inactive.',
+                code='inactive',
+            )
+
+class CustomPasswordChangeForm(forms.Form):
+    """Simple password change form - just old and new password"""
+    old_password = forms.CharField(
+        label="Current Password",
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Enter current password',
+            'autocomplete': 'current-password'
+        })
+    )
+    new_password = forms.CharField(
+        label="New Password",
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Enter new password',
+            'autocomplete': 'new-password'
+        }),
+        min_length=4,  # Minimum 4 characters only
+    )
+    confirm_password = forms.CharField(
+        label="Confirm New Password",
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Confirm new password',
+            'autocomplete': 'new-password'
+        })
+    )
+    
+    def __init__(self, user, *args, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+    
+    def clean_old_password(self):
+        """Check if old password is correct"""
+        old_password = self.cleaned_data.get('old_password')
+        if not self.user.check_password(old_password):
+            raise forms.ValidationError("Current password is incorrect.")
+        return old_password
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        new_password = cleaned_data.get('new_password')
+        confirm_password = cleaned_data.get('confirm_password')
+        
+        if new_password and confirm_password:
+            if new_password != confirm_password:
+                raise forms.ValidationError("New passwords do not match.")
+        
+        return cleaned_data
+    
+    def save(self):
+        """Save the new password"""
+        self.user.set_password(self.cleaned_data['new_password'])
+        self.user.save()
+        return self.user
+
+class CustomSetPasswordForm(SetPasswordForm):
+    new_password1 = forms.CharField(
+        label="New Password",
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Enter new password',
+            'autocomplete': 'new-password'
+        }),
+        strip=False,
+    )
+    new_password2 = forms.CharField(
+        label="Confirm New Password",
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Confirm new password',
+            'autocomplete': 'new-password'
+        }),
+        strip=False,
+    )
+
+class CustomPasswordResetForm(PasswordResetForm):
+    old_password = forms.CharField(
+        label="Current Password",
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Enter current password',
+            'autocomplete': 'current-password'
+        })
+    )
+    new_password1 = forms.CharField(
+        label="New Password",
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Enter new password',
+            'autocomplete': 'new-password'
+        }),
+        strip=False,
+    )
+    new_password2 = forms.CharField(
+        label="Confirm New Password",
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Confirm new password',
+            'autocomplete': 'new-password'
+        }),
+        strip=False,
+    )
 
 class BookingForm(forms.ModelForm):
     client_first_name = forms.CharField(max_length=100, required=True)
     client_last_name = forms.CharField(max_length=100, required=True)
     client_email = forms.EmailField(required=True)
     client_phone = forms.CharField(max_length=20, required=True)
+    zoom_link = forms.URLField(
+        required=False,
+        widget=forms.URLInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'https://zoom.us/j/1234567890 or https://meet.google.com/xxx-xxxx-xxx'
+        }),
+        help_text='Paste your Zoom/Google Meet link here (only for Zoom appointments)'
+    )
     
     class Meta:
         model = Booking
         fields = ['salesman', 'appointment_date', 'appointment_time', 'duration_minutes', 
-                  'appointment_type', 'notes']
+                  'appointment_type', 'zoom_link', 'notes']
         widgets = {
             'appointment_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'appointment_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
@@ -40,7 +344,7 @@ class BookingForm(forms.ModelForm):
         
         # Filter salesmen to only active salesmen
         self.fields['salesman'].queryset = User.objects.filter(
-            profile__is_active_salesman=True,
+            is_active_salesman=True,
             is_active=True
         )
         self.fields['salesman'].widget.attrs['class'] = 'form-control'
@@ -57,7 +361,13 @@ class BookingForm(forms.ModelForm):
         salesman = cleaned_data.get('salesman')
         appointment_date = cleaned_data.get('appointment_date')
         appointment_time = cleaned_data.get('appointment_time')
+        appointment_type = cleaned_data.get('appointment_type')
         duration_minutes = cleaned_data.get('duration_minutes')
+        zoom_link = cleaned_data.get('zoom_link')
+
+        if appointment_type == 'zoom' and not zoom_link:
+            raise forms.ValidationError("Zoom link is required for Zoom appointments")
+        
         
         if all([salesman, appointment_date, appointment_time, duration_minutes]):
             # Check for booking conflicts
@@ -170,7 +480,7 @@ class UnavailabilityForm(forms.ModelForm):
         else:
             # Admins can manage anyone's availability
             self.fields['salesman'].queryset = User.objects.filter(
-                profile__is_active_salesman=True,
+                is_active_salesman=True,
                 is_active=True
             )
             self.fields['salesman'].widget.attrs['class'] = 'form-control'
@@ -250,64 +560,6 @@ class PayrollAdjustmentForm(forms.ModelForm):
         
         self.fields['booking'].required = False
 
-class UserForm(forms.ModelForm):
-    first_name = forms.CharField(max_length=100, required=True)
-    last_name = forms.CharField(max_length=100, required=True)
-    email = forms.EmailField(required=True)
-    employee_id = forms.CharField(max_length=20, required=True)
-    phone_number = forms.CharField(max_length=20, required=True)
-    commission_rate = forms.DecimalField(max_digits=10, decimal_places=2, required=False)
-    is_active_salesman = forms.BooleanField(required=False)
-    hire_date = forms.DateField(widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}))
-    roles = forms.MultipleChoiceField(
-        choices=[('sales_support', 'Sales Support'), ('salesman', 'Salesman'), ('admin', 'Administrator')],
-        widget=forms.CheckboxSelectMultiple,
-        required=False
-    )
-    
-    class Meta:
-        model = User
-        fields = ['first_name', 'last_name', 'email', 'is_active']
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-        if self.instance and self.instance.pk:
-            # Pre-fill profile fields
-            profile = self.instance.profile
-            self.fields['employee_id'].initial = profile.employee_id
-            self.fields['phone_number'].initial = profile.phone_number
-            self.fields['commission_rate'].initial = profile.commission_rate
-            self.fields['is_active_salesman'].initial = profile.is_active_salesman
-            self.fields['hire_date'].initial = profile.hire_date
-            
-            # Pre-fill roles
-            user_groups = list(self.instance.groups.values_list('name', flat=True))
-            self.fields['roles'].initial = user_groups
-    
-    def save(self, commit=True):
-        user = super().save(commit=False)
-        user.username = self.cleaned_data['email']
-        
-        if commit:
-            user.save()
-            
-            # Update profile
-            profile = user.profile
-            profile.employee_id = self.cleaned_data['employee_id']
-            profile.phone_number = self.cleaned_data['phone_number']
-            profile.commission_rate = self.cleaned_data.get('commission_rate')
-            profile.is_active_salesman = self.cleaned_data.get('is_active_salesman', False)
-            profile.hire_date = self.cleaned_data['hire_date']
-            profile.save()
-            
-            # Update groups/roles
-            user.groups.clear()
-            for role in self.cleaned_data.get('roles', []):
-                group, created = Group.objects.get_or_create(name=role)
-                user.groups.add(group)
-        
-        return user
 
 class SystemConfigForm(forms.ModelForm):
     class Meta:

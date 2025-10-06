@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import login, logout, authenticate
+from django.contrib.auth import login, logout, authenticate, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Sum, Count
@@ -7,28 +7,56 @@ from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
 from django.utils import timezone
 from django.core.paginator import Paginator
 from datetime import datetime, timedelta
+from django.contrib.auth.views import (
+    PasswordResetView, PasswordResetDoneView, 
+    PasswordResetConfirmView, PasswordResetCompleteView
+)
 import csv
+from django.urls import reverse_lazy
 from .models import (Booking, Client, Unavailability, PayrollPeriod, PayrollAdjustment, 
-                     SystemConfig, AuditLog, UserProfile, CompanyHoliday, User)
+                     SystemConfig, AuditLog, CompanyHoliday, User)
 from .forms import (LoginForm, BookingForm, CancelBookingForm, UnavailabilityForm,
-                    PayrollAdjustmentForm, UserForm, SystemConfigForm)
+                    PayrollAdjustmentForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
 from .decorators import group_required, admin_required
 from .utils import (get_current_payroll_period, get_payroll_periods, send_booking_confirmation,
                     send_booking_cancellation, check_booking_conflicts, check_unavailability_conflicts)
+from django.utils.crypto import get_random_string
+from calendar import monthcalendar
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
 
 # ============================================================
 # Authentication Views
 # ============================================================
-
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('calendar')
     
     if request.method == 'POST':
         form = LoginForm(request, data=request.POST)
+        username = request.POST.get('username')
+        
+        # Get user by username to check lock status
+        try:
+            user = User.objects.get(username=username)
+            
+            # Check if account is locked
+            if user.is_account_locked():
+                messages.error(request, 'Account is locked due to too many failed login attempts. Please try again in 30 minutes.')
+                return render(request, 'login.html', {'form': form})
+            
+        except User.DoesNotExist:
+            pass  # Will be handled by form validation
+        
         if form.is_valid():
             user = form.get_user()
             login(request, user)
+            
+            # Reset failed login attempts on successful login
+            user.reset_failed_login_attempts()
             
             # Handle remember me
             if not form.cleaned_data.get('remember_me'):
@@ -36,6 +64,21 @@ def login_view(request):
             
             messages.success(request, f'Welcome back, {user.get_full_name()}!')
             return redirect('calendar')
+        else:
+            # Increment failed login attempts
+            if username:
+                try:
+                    user = User.objects.get(username=username)
+                    user.increment_failed_login()
+                    
+                    # Show attempts remaining
+                    from django.conf import settings
+                    max_attempts = getattr(settings, 'MAX_LOGIN_ATTEMPTS', 5)
+                    remaining = max_attempts - user.failed_login_attempts
+                    if remaining > 0:
+                        messages.warning(request, f'Invalid credentials. {remaining} attempts remaining before account is locked.')
+                except User.DoesNotExist:
+                    messages.error(request, 'Invalid username or password.')
     else:
         form = LoginForm()
     
@@ -47,6 +90,64 @@ def logout_view(request):
     messages.info(request, 'You have been logged out successfully.')
     return redirect('login')
 
+# ============================================================
+# Password Reset Views
+# ============================================================
+
+class CustomPasswordResetView(PasswordResetView):
+    template_name = 'password_reset.html'
+    email_template_name = 'emails/password_reset_email.html'
+    subject_template_name = 'emails/password_reset_subject.txt'
+    form_class = CustomPasswordResetForm  # This should be PasswordResetForm (email only)
+    success_url = reverse_lazy('password_reset_done')
+    
+    def form_valid(self, form):
+        messages.success(self.request, 'Password reset email has been sent. Please check your inbox.')
+        return super().form_valid(form)
+
+class CustomPasswordResetDoneView(PasswordResetDoneView):
+    template_name = 'password_reset_done.html'
+
+class CustomPasswordResetConfirmView(PasswordResetConfirmView):
+    template_name = 'password_reset_confirm.html'
+    form_class = CustomSetPasswordForm
+    success_url = reverse_lazy('password_reset_complete')
+    
+    def form_valid(self, form):
+        messages.success(self.request, 'Your password has been reset successfully!')
+        return super().form_valid(form)
+
+class CustomPasswordResetCompleteView(PasswordResetCompleteView):
+    template_name = 'password_reset_complete.html'
+
+@login_required
+def password_change_view(request):
+    if request.method == 'POST':
+        form = CustomPasswordChangeForm(request.user, request.POST)
+        if form.is_valid():
+            user = form.save()
+            update_session_auth_hash(request, user)  # Keep user logged in
+            
+            # Mark temp credential as used
+            try:
+                from .models import TemporaryCredential
+                if hasattr(user, 'temp_credential'):
+                    user.temp_credential.mark_as_used()
+            except:
+                pass
+            
+            messages.success(request, 'Password changed successfully!')
+            return redirect('calendar')
+        else:
+            for error in form.non_field_errors():
+                messages.error(request, error)
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, error)
+    else:
+        form = CustomPasswordChangeForm(request.user)
+    
+    return render(request, 'password_change.html', {'form': form})
 # ============================================================
 # Calendar & Booking Views
 # ============================================================
@@ -70,24 +171,28 @@ def calendar_view(request):
     
     # Calculate date range based on view mode
     if view_mode == 'month':
-        # First day of month to last day of month
         start_date = current_date.replace(day=1)
         if current_date.month == 12:
             end_date = current_date.replace(year=current_date.year + 1, month=1, day=1) - timedelta(days=1)
         else:
             end_date = current_date.replace(month=current_date.month + 1, day=1) - timedelta(days=1)
+        
+        # Generate calendar grid for month view
+        calendar_weeks = monthcalendar(current_date.year, current_date.month)
+        
     elif view_mode == 'week':
-        # Monday to Sunday
         start_date = current_date - timedelta(days=current_date.weekday())
         end_date = start_date + timedelta(days=6)
+        calendar_weeks = None
     else:  # day
         start_date = end_date = current_date
+        calendar_weeks = None
     
     # Build query
     bookings = Booking.objects.filter(
         appointment_date__gte=start_date,
         appointment_date__lte=end_date
-    ).select_related('client', 'salesman', 'salesman__profile')
+    ).select_related('client', 'salesman')
     
     if salesman_id:
         bookings = bookings.filter(salesman_id=salesman_id)
@@ -112,9 +217,9 @@ def calendar_view(request):
     
     # Get all salesmen for filter
     salesmen = User.objects.filter(
-        profile__is_active_salesman=True,
+        is_active_salesman=True,
         is_active=True
-    ).select_related('profile')
+    )
     
     context = {
         'bookings': bookings,
@@ -127,6 +232,7 @@ def calendar_view(request):
         'view_mode': view_mode,
         'selected_salesman': salesman_id,
         'selected_type': appointment_type,
+        'calendar_weeks': calendar_weeks,  # ADD THIS
     }
     
     return render(request, 'calendar.html', context)
@@ -285,9 +391,9 @@ def commissions_view(request):
     users = None
     if request.user.is_staff:
         users = User.objects.filter(
-            profile__is_active_salesman=True,
+            is_active_salesman=True,
             is_active=True
-        ).select_related('profile')
+        )
     
     context = {
         'bookings': bookings,
@@ -317,7 +423,7 @@ def availability_view(request):
     if is_admin:
         salesman_id = request.GET.get('salesman')
         if salesman_id:
-            salesman = get_object_or_404(User, pk=salesman_id, profile__is_active_salesman=True)
+            salesman = get_object_or_404(User, pk=salesman_id, is_active_salesman=True)
         else:
             salesman = request.user
     else:
@@ -333,9 +439,9 @@ def availability_view(request):
     salesmen = None
     if is_admin:
         salesmen = User.objects.filter(
-            profile__is_active_salesman=True,
+            is_active_salesman=True,
             is_active=True
-        ).select_related('profile')
+        )
     
     context = {
         'blocks': blocks,
@@ -440,7 +546,7 @@ def payroll_view(request):
     bookings = Booking.objects.filter(
         appointment_date__gte=start_date,
         appointment_date__lte=end_date
-    ).select_related('client', 'salesman', 'salesman__profile')
+    ).select_related('client', 'salesman')
     
     # Calculate commissions by user
     user_commissions = {}
@@ -577,14 +683,14 @@ def payroll_export(request):
     bookings = Booking.objects.filter(
         appointment_date__gte=start_date,
         appointment_date__lte=end_date
-    ).select_related('client', 'salesman', 'salesman__profile').order_by('salesman', 'appointment_date')
+    ).select_related('client', 'salesman', ).order_by('salesman', 'appointment_date')
     
     # Write booking rows
     for booking in bookings:
         commission = booking.commission_amount if booking.counts_for_commission() else 0
         
         writer.writerow([
-            booking.salesman.profile.employee_id,
+            booking.salesman.employee_id,
             booking.salesman.get_full_name(),
             booking.salesman.email,
             booking.client.get_full_name() if hasattr(booking.client, 'get_full_name') else f"{booking.client.first_name} {booking.client.last_name}",
@@ -607,7 +713,7 @@ def payroll_export(request):
             user_id = booking.salesman.id
             if user_id not in user_totals:
                 user_totals[user_id] = {
-                    'employee_id': booking.salesman.profile.employee_id,
+                    'employee_id': booking.salesman.employee_id,
                     'name': booking.salesman.get_full_name(),
                     'total': 0,
                     'count': 0
@@ -635,7 +741,7 @@ def payroll_export(request):
             
             for adj in adjustments:
                 writer.writerow([
-                    adj.user.profile.employee_id,
+                    adj.user.employee_id,
                     adj.user.get_full_name(),
                     adj.get_adjustment_type_display(),
                     adj.amount,
@@ -689,7 +795,7 @@ def payroll_adjustment_create(request):
 @login_required
 @admin_required
 def users_view(request):
-    users = User.objects.all().select_related('profile').order_by('last_name', 'first_name')
+    users = User.objects.all().order_by('last_name', 'first_name')
     
     # Filter options
     role_filter = request.GET.get('role')
@@ -717,20 +823,33 @@ def user_create(request):
     if request.method == 'POST':
         form = UserForm(request.POST)
         if form.is_valid():
-            user = form.save(commit=False)
-            # Generate temporary password
-            temp_password = User.objects.make_random_password()
-            user.set_password(temp_password)
-            user = form.save()
-            
-            # TODO: Send email with temporary password
-            messages.success(request, f'User created successfully! Temporary password: {temp_password}')
-            return redirect('users')
+            try:
+                user = form.save()  # Form handles everything including employee_id
+                
+                # Only generate temp password if no password was set in form
+                if not request.POST.get('password'):
+                    temp_password = get_random_string(length=12)
+                    user.set_password(temp_password)
+                    user.save()
+                    logger.info(f"User created: {user.username}, Employee ID: {user.employee_id}, Temp Password: {temp_password}")
+                    messages.success(request, f'User created successfully! Temporary password: {temp_password} (Please save this and share securely with the user)')
+                else:
+                    messages.success(request, 'User created successfully!')
+                
+                return redirect('users')
+            except Exception as e:
+                logger.error(f"Error creating user: {str(e)}")
+                messages.error(request, f'Error creating user: {str(e)}')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f'{field}: {error}')
     else:
         form = UserForm()
     
     return render(request, 'user_form.html', {'form': form, 'title': 'Create User'})
 
+    
 @login_required
 @admin_required
 def user_edit(request, pk):

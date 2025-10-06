@@ -49,7 +49,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'csass_project.wsgi.application'
 
-DATABASES = {
+"""DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': config('DATABASE_NAME'),
@@ -58,7 +58,18 @@ DATABASES = {
         'HOST': config('DATABASE_HOST', default='localhost'),
         'PORT': config('DATABASE_PORT', default='5432'),
     }
+}"""
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
 }
+
+
+# CUSTOM USER MODEL - CRITICAL SETTING
+AUTH_USER_MODEL = 'core.User'
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -95,6 +106,9 @@ EMAIL_HOST_USER = config('SMTP_USER')
 EMAIL_HOST_PASSWORD = config('SMTP_PASSWORD')
 DEFAULT_FROM_EMAIL = config('FROM_EMAIL')
 
+# Password Reset Settings
+PASSWORD_RESET_TIMEOUT = 86400  # 24 hours in seconds
+
 # Crispy Forms
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
@@ -105,3 +119,7 @@ SESSION_SAVE_EVERY_REQUEST = True
 
 # Custom Settings
 MAX_LOGIN_ATTEMPTS = 5
+
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_TIMEOUT = 5  # seconds
+AUTH_PASSWORD_VALIDATORS = []

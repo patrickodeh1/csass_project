@@ -66,6 +66,17 @@
                                 {% endif %}
                             </div>
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.zoom_link.id_for_label }}" class="form-label">
+                                Meeting Link <span class="text-muted">(for Zoom appointments)</span>
+                            </label>
+                            {{ form.zoom_link }}
+                            {% if form.zoom_link.errors %}
+                            <div class="text-danger small">{{ form.zoom_link.errors.0 }}</div>
+                            {% endif %}
+                            <small class="form-text text-muted">{{ form.zoom_link.help_text }}</small>
+                        </div>
+                    </div>
                         <div class="row">
                             <div class="col-md-4 mb-3">
                                 <label for="{{ form.appointment_date.id_for_label }}" class="form-label">Date *</label>

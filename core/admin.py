@@ -1,11 +1,11 @@
 from django.contrib import admin
-from .models import (UserProfile, Client, Booking, Unavailability, 
+from .models import (User, Client, Booking, Unavailability, 
                      PayrollPeriod, PayrollAdjustment, CompanyHoliday, 
                      SystemConfig, AuditLog)
 
-@admin.register(UserProfile)
-class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ['user', 'employee_id', 'phone_number', 'is_active_salesman', 'hire_date']
+@admin.register(User)
+class User(admin.ModelAdmin):
+    list_display = ['username', 'employee_id', 'phone_number', 'is_active_salesman', 'hire_date']
     list_filter = ['is_active_salesman', 'hire_date']
     search_fields = ['user__first_name', 'user__last_name', 'employee_id', 'phone_number']
 
@@ -70,3 +70,4 @@ class AuditLogAdmin(admin.ModelAdmin):
     
     def has_delete_permission(self, request, obj=None):
         return False
+

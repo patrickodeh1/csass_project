@@ -18,7 +18,7 @@
                         {% csrf_token %}
                         
                         <div class="mb-3">
-                            <label for="{{ form.username.id_for_label }}" class="form-label">Email Address</label>
+                            <label for="{{ form.username.id_for_label }}" class="form-label">Username</label>
                             {{ form.username }}
                             {% if form.username.errors %}
                             <div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>
@@ -51,7 +51,7 @@
                         </button>
 
                         <div class="text-center">
-                            <a href="#" class="text-decoration-none small">Forgot Password?</a>
+                            <a href="{% url 'password_reset' %}" class="text-decoration-none small">Forgot Password?</a>
                         </div>
                     </form>
                 </div>

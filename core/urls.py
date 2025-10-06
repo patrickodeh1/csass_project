@@ -1,10 +1,20 @@
 from django.urls import path
+from django.contrib.auth import views as auth_views
 from . import views
 
 urlpatterns = [
     # Authentication
     path('', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    
+    # Password Reset
+    path('password-reset/', views.CustomPasswordResetView.as_view(), name='password_reset'),
+    path('password-reset/done/', views.CustomPasswordResetDoneView.as_view(), name='password_reset_done'),
+    path('password-reset-confirm/<uidb64>/<token>/', views.CustomPasswordResetConfirmView.as_view(), name='password_reset_confirm'),
+    path('password-reset-complete/', views.CustomPasswordResetCompleteView.as_view(), name='password_reset_complete'),
+    
+    # Password Change
+    path('password-change/', views.password_change_view, name='password_change'),
     
     # Calendar & Bookings
     path('calendar/', views.calendar_view, name='calendar'),
@@ -22,21 +32,21 @@ urlpatterns = [
     path('availability/<int:pk>/edit/', views.availability_edit, name='availability_edit'),
     path('availability/<int:pk>/delete/', views.availability_delete, name='availability_delete'),
     
-    # Payroll (Admin)
-    path('admin/payroll/', views.payroll_view, name='payroll'),
-    path('admin/payroll/<int:pk>/finalize/', views.payroll_finalize, name='payroll_finalize'),
-    path('admin/payroll/export/', views.payroll_export, name='payroll_export'),
-    path('admin/payroll/adjustment/new/', views.payroll_adjustment_create, name='payroll_adjustment_create'),
+    # Payroll (admiin)
+    path('admiin/payroll/', views.payroll_view, name='payroll'),
+    path('admiin/payroll/<int:pk>/finalize/', views.payroll_finalize, name='payroll_finalize'),
+    path('admiin/payroll/export/', views.payroll_export, name='payroll_export'),
+    path('admiin/payroll/adjustment/new/', views.payroll_adjustment_create, name='payroll_adjustment_create'),
     
-    # Users (Admin)
-    path('admin/users/', views.users_view, name='users'),
-    path('admin/users/new/', views.user_create, name='user_create'),
-    path('admin/users/<int:pk>/edit/', views.user_edit, name='user_edit'),
-    path('admin/users/<int:pk>/deactivate/', views.user_deactivate, name='user_deactivate'),
+    # Users (admiin)
+    path('admiin/users/', views.users_view, name='users'),
+    path('admiin/users/new/', views.user_create, name='user_create'),
+    path('admiin/users/<int:pk>/edit/', views.user_edit, name='user_edit'),
+    path('admiin/users/<int:pk>/deactivate/', views.user_deactivate, name='user_deactivate'),
     
-    # Settings (Admin)
-    path('admin/settings/', views.settings_view, name='settings'),
+    # Settings (admiin)
+    path('admiin/settings/', views.settings_view, name='settings'),
     
-    # Audit Log (Admin)
-    path('admin/audit-log/', views.audit_log_view, name='audit_log'),
+    # Audit Log (admiin)
+    path('admiin/audit-log/', views.audit_log_view, name='audit_log'),
 ]

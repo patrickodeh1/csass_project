@@ -1,35 +1,146 @@
 from django.db import models
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group
 from django.core.validators import MinValueValidator
 from django.utils import timezone
 from decimal import Decimal
 from datetime import datetime, timedelta, time
 import uuid
 
-class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    employee_id = models.CharField(max_length=20, unique=True)
+class UserManager(BaseUserManager):
+    """Custom user manager for email-based authentication"""
+    
+    def create_user(self, email, username, password=None, **extra_fields):
+        """Create and save a regular user"""
+        if not email:
+            raise ValueError('Users must have an email address')
+        if not username:
+            raise ValueError('Users must have a username')
+        
+        email = self.normalize_email(email)
+        user = self.model(email=email, username=username, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+    
+    def create_superuser(self, email, username, password=None, **extra_fields):
+        """Create and save a superuser"""
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_active', True)
+        
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Superuser must have is_staff=True')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('Superuser must have is_superuser=True')
+        
+        return self.create_user(email, username, password, **extra_fields)
+
+# ============================================================
+# CUSTOM USER MODEL
+# ============================================================
+
+class User(AbstractBaseUser, PermissionsMixin):
+    """Custom User model with email and username authentication"""
+    
+    username = models.CharField(max_length=150, unique=True)
+    email = models.EmailField(unique=True)
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    
+    # Additional fields
+    employee_id = models.CharField(max_length=20, unique=True, null=True, blank=True)
     phone_number = models.CharField(max_length=20)
     commission_rate = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     is_active_salesman = models.BooleanField(default=False)
-    hire_date = models.DateField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    hire_date = models.DateField(null=True)
+    
+    # Status fields
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+    is_superuser = models.BooleanField(default=False)
+    
+    # Timestamps
+    date_joined = models.DateTimeField(default=timezone.now)
+    last_login = models.DateTimeField(null=True, blank=True)
+    
+    # Password reset
+    password_reset_token = models.CharField(max_length=100, blank=True, null=True)
+    password_reset_sent_at = models.DateTimeField(null=True, blank=True)
+    
+    # Login attempts tracking
+    failed_login_attempts = models.IntegerField(default=0)
+    last_failed_login = models.DateTimeField(null=True, blank=True)
+    
+    objects = UserManager()
+    
+    USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS = ['email', 'first_name', 'last_name']
+    
+    class Meta:
+        db_table = 'users'
+        verbose_name = 'User'
+        verbose_name_plural = 'Users'
+        ordering = ['last_name', 'first_name']
     
     def __str__(self):
-        return f"{self.user.get_full_name()} ({self.employee_id})"
+        return f"{self.get_full_name()} ({self.username})"
+
+    def get_full_name(self):
+        """Return the first_name plus the last_name, with a space in between"""
+        return f"{self.first_name} {self.last_name}".strip()
+    
+    def get_short_name(self):
+        """Return the short name for the user"""
+        return self.first_name
     
     def get_commission_rate(self):
         """Get user's commission rate or system default"""
         if self.commission_rate:
             return self.commission_rate
         return SystemConfig.get_config().default_commission_rate
+    
+    def has_group(self, group_name):
+        """Check if user belongs to a group"""
+        return self.groups.filter(name=group_name).exists()
+    
+    def get_roles(self):
+        """Get list of user's role names"""
+        return list(self.groups.values_list('name', flat=True))
+    
+    def reset_failed_login_attempts(self):
+        """Reset failed login attempts counter"""
+        self.failed_login_attempts = 0
+        self.last_failed_login = None
+        self.save(update_fields=['failed_login_attempts', 'last_failed_login'])
+    
+    def increment_failed_login(self):
+        """Increment failed login attempts"""
+        self.failed_login_attempts += 1
+        self.last_failed_login = timezone.now()
+        self.save(update_fields=['failed_login_attempts', 'last_failed_login'])
+    
+    def is_account_locked(self):
+        """Check if account is locked due to too many failed attempts"""
+        from django.conf import settings
+        max_attempts = getattr(settings, 'MAX_LOGIN_ATTEMPTS', 5)
+        
+        if self.failed_login_attempts >= max_attempts:
+            # Check if 30 minutes have passed since last failed attempt
+            if self.last_failed_login:
+                time_since_last_fail = timezone.now() - self.last_failed_login
+                if time_since_last_fail < timedelta(minutes=30):
+                    return True
+                else:
+                    # Auto-reset after 30 minutes
+                    self.reset_failed_login_attempts()
+        return False
+
 
 class Client(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
-    phone_number = models.CharField(max_length=20, unique=True)
+    phone_number = models.CharField(max_length=20)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='clients_created')
@@ -43,6 +154,9 @@ class Client(models.Model):
         ]
     
     def __str__(self):
+        return f"{self.first_name} {self.last_name}"
+    
+    def get_full_name(self):
         return f"{self.first_name} {self.last_name}"
     
     def get_booking_count(self):
@@ -135,13 +249,10 @@ class Booking(models.Model):
         return self.status in ['confirmed', 'completed']
     
     def save(self, *args, **kwargs):
-        # Generate Zoom link if needed
-        if self.appointment_type == 'zoom' and not self.zoom_link:
-            self.zoom_link = f"https://zoom.us/j/{uuid.uuid4().hex[:10]}"
-        
+       
         # Set commission amount if not set
         if not self.commission_amount:
-            self.commission_amount = self.salesman.profile.get_commission_rate()
+            self.commission_amount = self.salesman.get_commission_rate()
         
         super().save(*args, **kwargs)
 
