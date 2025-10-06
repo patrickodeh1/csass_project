@@ -285,31 +285,15 @@ class CustomSetPasswordForm(SetPasswordForm):
     )
 
 class CustomPasswordResetForm(PasswordResetForm):
-    old_password = forms.CharField(
-        label="Current Password",
-        widget=forms.PasswordInput(attrs={
+    """Password reset form - just email to send reset link"""
+    email = forms.EmailField(
+        label="Email Address",
+        max_length=254,
+        widget=forms.EmailInput(attrs={
             'class': 'form-control',
-            'placeholder': 'Enter current password',
-            'autocomplete': 'current-password'
+            'placeholder': 'Enter your email address',
+            'autocomplete': 'email'
         })
-    )
-    new_password1 = forms.CharField(
-        label="New Password",
-        widget=forms.PasswordInput(attrs={
-            'class': 'form-control',
-            'placeholder': 'Enter new password',
-            'autocomplete': 'new-password'
-        }),
-        strip=False,
-    )
-    new_password2 = forms.CharField(
-        label="Confirm New Password",
-        widget=forms.PasswordInput(attrs={
-            'class': 'form-control',
-            'placeholder': 'Confirm new password',
-            'autocomplete': 'new-password'
-        }),
-        strip=False,
     )
 
 class BookingForm(forms.ModelForm):

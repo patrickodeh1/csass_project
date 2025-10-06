@@ -96,11 +96,11 @@ def logout_view(request):
 
 class CustomPasswordResetView(PasswordResetView):
     template_name = 'password_reset.html'
-    email_template_name = 'emails/password_reset_email.html'
+    email_template_name = 'emails/password_reset_email.txt'
     subject_template_name = 'emails/password_reset_subject.txt'
     form_class = CustomPasswordResetForm  # This should be PasswordResetForm (email only)
     success_url = reverse_lazy('password_reset_done')
-    
+    html_email_template_name = 'emails/password_reset_email.html'
     def form_valid(self, form):
         messages.success(self.request, 'Password reset email has been sent. Please check your inbox.')
         return super().form_valid(form)
