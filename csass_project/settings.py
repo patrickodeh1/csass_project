@@ -98,13 +98,9 @@ LOGIN_REDIRECT_URL = 'calendar'
 LOGOUT_REDIRECT_URL = 'login'
 
 # Email Configuration
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = config('SMTP_HOST')
-EMAIL_PORT = config('SMTP_PORT', cast=int)
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = config('SMTP_USER')
-EMAIL_HOST_PASSWORD = config('SMTP_PASSWORD')
-DEFAULT_FROM_EMAIL = config('FROM_EMAIL')
+EMAIL_BACKEND = "sendgrid_backend.SendgridBackend"
+SENDGRID_API_KEY = config("SENDGRID_API_KEY")
+DEFAULT_FROM_EMAIL = config("FROM_EMAIL")
 
 # Password Reset Settings
 PASSWORD_RESET_TIMEOUT = 86400  # 24 hours in seconds
@@ -120,6 +116,6 @@ SESSION_SAVE_EVERY_REQUEST = True
 # Custom Settings
 MAX_LOGIN_ATTEMPTS = 5
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-EMAIL_TIMEOUT = 5  # seconds
+EMAIL_TIMEOUT = 5
 AUTH_PASSWORD_VALIDATORS = []
+SENDGRID_SANDBOX_MODE_IN_DEBUG = False
