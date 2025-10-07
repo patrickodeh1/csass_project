@@ -169,7 +169,7 @@ def password_change_view(request):
 # ============================================================
 @login_required
 def calendar_view(request):
-    """Fixed calendar view with proper weekday matching and organized data"""
+    """Calendar view with role-based booking visibility and correct weekday alignment"""
     from datetime import date as date_class
     
     # Get filter parameters
@@ -206,8 +206,9 @@ def calendar_view(request):
         else:
             next_month = current_date.replace(month=current_date.month + 1, day=1)
         
-        # Generate proper calendar grid with weekday matching
+        # Generate calendar grid with Sunday as first day
         import calendar
+        calendar.setfirstweekday(calendar.SUNDAY)  # Set Sunday as first day
         cal = calendar.monthcalendar(current_date.year, current_date.month)
         
         calendar_weeks = []
@@ -215,7 +216,6 @@ def calendar_view(request):
             week_data = []
             for day in week:
                 if day == 0:
-                    # Empty cell for days from other months
                     week_data.append({
                         'day': 0,
                         'is_current_month': False,
@@ -223,9 +223,9 @@ def calendar_view(request):
                         'pending_bookings': [],
                         'confirmed_bookings': [],
                         'declined_bookings': [],
+                        'appointments': [],  # For salesmen
                     })
                 else:
-                    # Create proper date for this day
                     day_date = date_class(current_date.year, current_date.month, day)
                     week_data.append({
                         'day': day,
@@ -235,6 +235,7 @@ def calendar_view(request):
                         'pending_bookings': [],
                         'confirmed_bookings': [],
                         'declined_bookings': [],
+                        'appointments': [],  # For salesmen
                     })
             calendar_weeks.append(week_data)
         
@@ -243,8 +244,8 @@ def calendar_view(request):
         next_date = None
         
     elif view_mode == 'week':
-        # Start week on Sunday (0 = Monday in Python, 6 = Sunday)
-        days_since_sunday = (current_date.weekday() + 1) % 7
+        # Calculate week starting on Sunday
+        days_since_sunday = current_date.weekday()  # 0=Mon, 1=Tue, ..., 6=Sun
         start_date = current_date - timedelta(days=days_since_sunday)
         end_date = start_date + timedelta(days=6)
         
@@ -254,7 +255,6 @@ def calendar_view(request):
         prev_date = start_date - timedelta(days=7)
         next_date = end_date + timedelta(days=1)
         
-        # Generate week_days list
         week_days = []
         for i in range(7):
             day_date = start_date + timedelta(days=i)
@@ -264,6 +264,7 @@ def calendar_view(request):
                 'pending_bookings': [],
                 'confirmed_bookings': [],
                 'declined_bookings': [],
+                'appointments': [],  # For salesmen
             })
     else:  # day
         start_date = end_date = current_date
@@ -274,26 +275,41 @@ def calendar_view(request):
         prev_date = current_date - timedelta(days=1)
         next_date = current_date + timedelta(days=1)
     
-    # Build query for bookings - include all statuses
+    # Determine user role
+    is_admin = request.user.is_staff
+    is_salesman = request.user.groups.filter(name='salesman').exists()
+    is_remote_agent = request.user.groups.filter(name='remote_agent').exists()
+    
+    # Build query for bookings based on role
     bookings = Booking.objects.filter(
         appointment_date__gte=start_date,
         appointment_date__lte=end_date
     ).select_related('client', 'salesman', 'created_by')
     
-    if salesman_id:
+    if is_salesman and not is_admin:
+        # Salesmen see only their own bookings
+        bookings = bookings.filter(salesman=request.user)
+    elif is_remote_agent and not is_admin:
+        # Remote agents see only bookings they created
+        bookings = bookings.filter(created_by=request.user)
+    elif salesman_id and is_admin:
+        # Admins can filter by salesman_id
         bookings = bookings.filter(salesman_id=salesman_id)
     
     if appointment_type:
         bookings = bookings.filter(appointment_type=appointment_type)
     
-    # Get available time slots
+    # Get available time slots (salesmen see none, admins/remote agents see based on filters)
     timeslots = AvailableTimeSlot.objects.filter(
         is_active=True,
         date__gte=start_date,
         date__lte=end_date
     ).select_related('salesman')
     
-    if salesman_id:
+    if is_salesman and not is_admin:
+        # Salesmen do not see available time slots
+        timeslots = timeslots.none()
+    elif salesman_id and is_admin:
         timeslots = timeslots.filter(salesman_id=salesman_id)
     
     if appointment_type:
@@ -310,8 +326,6 @@ def calendar_view(request):
     available_slots_dict = {}
     for slot in timeslots:
         date_key = slot.date
-        
-        # Check if this slot is already booked
         is_booked = bookings.filter(
             salesman=slot.salesman,
             appointment_date=slot.date,
@@ -322,30 +336,36 @@ def calendar_view(request):
         if not is_booked:
             if date_key not in available_slots_dict:
                 available_slots_dict[date_key] = []
-            
             slot_obj = SlotData(slot.date, slot.start_time, slot.salesman, slot.appointment_type)
             available_slots_dict[date_key].append(slot_obj)
     
-    # Organize bookings by status and date
+    # Organize bookings by status for admins/remote agents, or as appointments for salesmen
     pending_bookings_dict = {}
     confirmed_bookings_dict = {}
     declined_bookings_dict = {}
+    appointments_dict = {}  # For salesmen
     
     for booking in bookings:
         date_key = booking.appointment_date
-        
-        if booking.status == 'pending':
-            if date_key not in pending_bookings_dict:
-                pending_bookings_dict[date_key] = []
-            pending_bookings_dict[date_key].append(booking)
-        elif booking.status in ['confirmed', 'completed']:
-            if date_key not in confirmed_bookings_dict:
-                confirmed_bookings_dict[date_key] = []
-            confirmed_bookings_dict[date_key].append(booking)
-        elif booking.status == 'declined':
-            if date_key not in declined_bookings_dict:
-                declined_bookings_dict[date_key] = []
-            declined_bookings_dict[date_key].append(booking)
+        if is_salesman and not is_admin:
+            # For salesmen, all bookings go into appointments
+            if date_key not in appointments_dict:
+                appointments_dict[date_key] = []
+            appointments_dict[date_key].append(booking)
+        else:
+            # For admins/remote agents, split by status
+            if booking.status == 'pending':
+                if date_key not in pending_bookings_dict:
+                    pending_bookings_dict[date_key] = []
+                pending_bookings_dict[date_key].append(booking)
+            elif booking.status in ['confirmed', 'completed']:
+                if date_key not in confirmed_bookings_dict:
+                    confirmed_bookings_dict[date_key] = []
+                confirmed_bookings_dict[date_key].append(booking)
+            elif booking.status == 'declined':
+                if date_key not in declined_bookings_dict:
+                    declined_bookings_dict[date_key] = []
+                declined_bookings_dict[date_key].append(booking)
     
     # Attach data to calendar structure
     if view_mode == 'month':
@@ -354,29 +374,39 @@ def calendar_view(request):
                 if day_info['is_current_month']:
                     day_date = day_info['date']
                     day_info['available_slots'] = available_slots_dict.get(day_date, [])
-                    day_info['pending_bookings'] = pending_bookings_dict.get(day_date, [])
-                    day_info['confirmed_bookings'] = confirmed_bookings_dict.get(day_date, [])
-                    day_info['declined_bookings'] = declined_bookings_dict.get(day_date, [])
+                    if is_salesman and not is_admin:
+                        day_info['appointments'] = appointments_dict.get(day_date, [])
+                    else:
+                        day_info['pending_bookings'] = pending_bookings_dict.get(day_date, [])
+                        day_info['confirmed_bookings'] = confirmed_bookings_dict.get(day_date, [])
+                        day_info['declined_bookings'] = declined_bookings_dict.get(day_date, [])
     
     elif view_mode == 'week':
         for day_info in week_days:
             day_date = day_info['date']
             day_info['available_slots'] = available_slots_dict.get(day_date, [])
-            day_info['pending_bookings'] = pending_bookings_dict.get(day_date, [])
-            day_info['confirmed_bookings'] = confirmed_bookings_dict.get(day_date, [])
-            day_info['declined_bookings'] = declined_bookings_dict.get(day_date, [])
+            if is_salesman and not is_admin:
+                day_info['appointments'] = appointments_dict.get(day_date, [])
+            else:
+                day_info['pending_bookings'] = pending_bookings_dict.get(day_date, [])
+                day_info['confirmed_bookings'] = confirmed_bookings_dict.get(day_date, [])
+                day_info['declined_bookings'] = declined_bookings_dict.get(day_date, [])
     
     # Day view - prepare separate lists
     day_available_slots = None
     day_pending_bookings = None
     day_confirmed_bookings = None
     day_declined_bookings = None
+    day_appointments = None
     
     if view_mode == 'day':
         day_available_slots = available_slots_dict.get(current_date, [])
-        day_pending_bookings = pending_bookings_dict.get(current_date, [])
-        day_confirmed_bookings = confirmed_bookings_dict.get(current_date, [])
-        day_declined_bookings = declined_bookings_dict.get(current_date, [])
+        if is_salesman and not is_admin:
+            day_appointments = appointments_dict.get(current_date, [])
+        else:
+            day_pending_bookings = pending_bookings_dict.get(current_date, [])
+            day_confirmed_bookings = confirmed_bookings_dict.get(current_date, [])
+            day_declined_bookings = declined_bookings_dict.get(current_date, [])
     
     # Get holidays
     holidays = CompanyHoliday.objects.filter(
@@ -384,11 +414,13 @@ def calendar_view(request):
         date__lte=end_date
     )
     
-    # Get all salesmen for filter
-    salesmen = User.objects.filter(
-        is_active_salesman=True,
-        is_active=True
-    )
+    # Get all salesmen for filter (only for admins)
+    salesmen = None
+    if is_admin:
+        salesmen = User.objects.filter(
+            is_active_salesman=True,
+            is_active=True
+        )
     
     context = {
         'holidays': holidays,
@@ -409,6 +441,8 @@ def calendar_view(request):
         'day_pending_bookings': day_pending_bookings,
         'day_confirmed_bookings': day_confirmed_bookings,
         'day_declined_bookings': day_declined_bookings,
+        'day_appointments': day_appointments,
+        'is_salesman': is_salesman and not is_admin,  # Flag for template
     }
     
     return render(request, 'calendar.html', context)
@@ -482,9 +516,11 @@ def booking_edit(request, pk):
         messages.error(request, 'This booking cannot be edited (locked or in the past).')
         return redirect('booking_detail', pk=pk)
     
-    # Check permissions
+    # Check permissions: Only admins or remote agents who created the booking
     if not request.user.is_staff:
-        if booking.salesman != request.user and booking.created_by != request.user:
+        if request.user.groups.filter(name='salesman').exists():
+            return HttpResponseForbidden("Salesmen cannot edit bookings.")
+        if booking.created_by != request.user:
             return HttpResponseForbidden("You don't have permission to edit this booking.")
     
     if request.method == 'POST':
@@ -595,9 +631,11 @@ def booking_cancel(request, pk):
         messages.error(request, 'This booking is locked (payroll finalized). Contact admin for adjustments.')
         return redirect('booking_detail', pk=pk)
     
-    # Check permissions
+    # Check permissions: Only admins or remote agents who created the booking
     if not request.user.is_staff:
-        if booking.salesman != request.user and booking.created_by != request.user:
+        if request.user.groups.filter(name='salesman').exists():
+            return HttpResponseForbidden("Salesmen cannot cancel bookings.")
+        if booking.created_by != request.user:
             return HttpResponseForbidden("You don't have permission to cancel this booking.")
     
     if request.method == 'POST':
