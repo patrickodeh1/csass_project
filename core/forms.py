@@ -358,7 +358,7 @@ class BookingForm(forms.ModelForm):
         
         if all([salesman, appointment_date, appointment_time, appointment_type]):
             # Get available slots for this day and appointment type
-            date = appointment_date.date()
+            date = appointment_date
             available_slots = AvailableTimeSlot.objects.filter(
                 salesman=salesman,
                 date=date,
