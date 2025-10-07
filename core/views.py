@@ -306,6 +306,7 @@ def calendar_view(request):
     }
     
     return render(request, 'calendar.html', context)
+    
 @login_required
 def calendar_view(request):
     # Get filter parameters
@@ -350,11 +351,11 @@ def calendar_view(request):
         calendar_weeks = None
         week_days = None
     
-    # Build query for bookings
+    # Build query for bookings - include all statuses
     bookings = Booking.objects.filter(
         appointment_date__gte=start_date,
         appointment_date__lte=end_date
-    ).select_related('client', 'salesman')
+    ).select_related('client', 'salesman', 'created_by')
     
     if salesman_id:
         bookings = bookings.filter(salesman_id=salesman_id)
@@ -362,7 +363,7 @@ def calendar_view(request):
     if appointment_type:
         bookings = bookings.filter(appointment_type=appointment_type)
     
-    # Get available time slots
+    # Get available time slots (unbooked slots)
     timeslots = AvailableTimeSlot.objects.filter(
         is_active=True,
         date__gte=start_date,
@@ -375,34 +376,39 @@ def calendar_view(request):
     if appointment_type:
         timeslots = timeslots.filter(appointment_type=appointment_type)
     
-    # Organize available slots by date
+    # Organize available slots by date (green - available)
     available_slots_by_date = {}
     for slot in timeslots:
         date = slot.date
-        date_key = date.strftime('%Y-%m-%d')  # Convert to string key for template consistency
+        date_key = date.strftime('%Y-%m-%d')
         
-        # Check if this slot is already booked
+        # Check if this exact slot is booked
         is_booked = bookings.filter(
             salesman=slot.salesman,
             appointment_date=date,
-            appointment_time=slot.start_time,
-            status__in=['pending', 'confirmed', 'completed']
+            appointment_time=slot.start_time
         ).exists()
         
         if not is_booked:
             if date_key not in available_slots_by_date:
                 available_slots_by_date[date_key] = []
             
-            # Create a simple object to hold slot data
             class SlotData:
-                def __init__(self, date, time, salesman, appointment_type):
+                def __init__(self, date, time, salesman, appointment_type, status='available'):
                     self.date = date
                     self.time = time
                     self.salesman = salesman
                     self.appointment_type = appointment_type
+                    self.status = status
             
             slot_obj = SlotData(date, slot.start_time, slot.salesman, slot.appointment_type)
             available_slots_by_date[date_key].append(slot_obj)
+    
+    # Get pending bookings (ash - pending, typically from remote agents)
+    pending_bookings = bookings.filter(status='pending').select_related('created_by')
+    
+    # Get confirmed bookings (blue - confirmed)
+    confirmed_bookings = bookings.filter(status__in=['confirmed', 'completed']).select_related('created_by')
     
     # Get holidays
     holidays = CompanyHoliday.objects.filter(
@@ -418,9 +424,9 @@ def calendar_view(request):
     
     # Prepare context for template
     context = {
-        'bookings': bookings,
-        'timeslots': timeslots,
-        'available_slots_by_date': available_slots_by_date,
+        'available_slots_by_date': available_slots_by_date,  # Green - available
+        'pending_bookings': pending_bookings,  # Ash - pending (remote agent bookings)
+        'confirmed_bookings': confirmed_bookings,  # Blue - confirmed
         'holidays': holidays,
         'salesmen': salesmen,
         'current_date': current_date,
@@ -431,6 +437,7 @@ def calendar_view(request):
         'selected_type': appointment_type,
         'calendar_weeks': calendar_weeks,
         'week_days': week_days,
+        'bookings': bookings,  # Keep for any additional template needs
     }
     
     return render(request, 'calendar.html', context)
