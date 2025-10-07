@@ -727,10 +727,18 @@ def pending_bookings_count_api(request):
 # Commission Views
 # ============================================================
 
+# Update the commissions_view function in views.py
+
 @login_required
-@group_required('remote_agent')
+@group_required('remote_agent')  # Only remote agents can access
 def commissions_view(request):
-    """Remote agents view their own commissions"""
+    """Remote agents view their own commissions - RESTRICTED TO REMOTE AGENTS ONLY"""
+    
+    # Double-check user is remote agent (security)
+    if not request.user.groups.filter(name='remote_agent').exists():
+        messages.error(request, "You don't have permission to view commissions.")
+        return redirect('calendar')
+    
     week_offset = int(request.GET.get('week', 0))
     
     current_period = get_current_payroll_period()
@@ -779,6 +787,8 @@ def commissions_view(request):
         'payroll_period': payroll_period,
         'available_weeks': available_weeks,
     }
+    
+    return render(request, 'commissions.html', context)
     
     return render(request, 'commissions.html', context)
 # ============================================================
