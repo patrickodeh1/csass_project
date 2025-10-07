@@ -3,7 +3,7 @@ from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, Pa
 from django.contrib.auth.models import Group
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Submit, Row, Column, Field, Div, HTML
-from .models import Booking, Client, Unavailability, PayrollAdjustment, SystemConfig, User
+from .models import Booking, Client, AvailableTimeSlot, Unavailability, PayrollAdjustment, SystemConfig, User
 from datetime import datetime, timedelta
 import logging
 from .utils import check_booking_conflicts, check_unavailability_conflicts
@@ -349,50 +349,100 @@ class BookingForm(forms.ModelForm):
         duration_minutes = cleaned_data.get('duration_minutes')
         zoom_link = cleaned_data.get('zoom_link')
 
+        # Validate Zoom link for Zoom appointments
         if appointment_type == 'zoom' and not zoom_link:
             raise forms.ValidationError("Zoom link is required for Zoom appointments")
         
-        
-        if all([salesman, appointment_date, appointment_time, duration_minutes]):
-            # Check for booking conflicts
-            has_conflict, conflict_booking = check_booking_conflicts(
-                salesman, appointment_date, appointment_time, duration_minutes,
-                exclude_booking_id=self.instance.pk if self.instance.pk else None
-            )
+        if all([salesman, appointment_date, appointment_time]):
+            # CHECK 1: Verify appointment time is within available time slots
+            available_slots = salesman.get_available_slots_for_date(appointment_date)
             
-            if has_conflict:
+            if not available_slots.exists():
                 raise forms.ValidationError(
-                    f"This time slot conflicts with an existing booking: {conflict_booking}"
+                    f"{salesman.get_full_name()} has no available time slots on {appointment_date.strftime('%A')}s. "
+                    f"Please contact an administrator to set up availability."
                 )
             
-            # Check for unavailability
-            has_unavailable, unavailable_block = check_unavailability_conflicts(
-                salesman, appointment_date, appointment_time, duration_minutes
-            )
+            # Check if appointment time falls within any available slot
+            time_is_valid = False
+            valid_slot = None
+            for slot in available_slots:
+                if slot.is_time_in_slot(appointment_time):
+                    time_is_valid = True
+                    valid_slot = slot
+                    break
             
-            if has_unavailable:
+            if not time_is_valid:
+                available_times = ", ".join([
+                    f"{slot.start_time.strftime('%I:%M %p')}-{slot.end_time.strftime('%I:%M %p')}" 
+                    for slot in available_slots
+                ])
                 raise forms.ValidationError(
-                    f"Salesman is unavailable during this time: {unavailable_block.reason}"
+                    f"Selected time ({appointment_time.strftime('%I:%M %p')}) is not within available slots. "
+                    f"{salesman.get_full_name()}'s available times on {appointment_date.strftime('%A')}s: {available_times}"
                 )
             
-            # Check booking constraints
-            config = SystemConfig.get_config()
-            appt_datetime = datetime.combine(appointment_date, appointment_time)
-            now = datetime.now()
+            # Verify entire appointment (including duration) fits within the slot
+            if valid_slot and duration_minutes:
+                appointment_end_time = (
+                    datetime.combine(appointment_date, appointment_time) + 
+                    timedelta(minutes=duration_minutes)
+                ).time()
+                
+                if appointment_end_time > valid_slot.end_time:
+                    raise forms.ValidationError(
+                        f"Appointment duration extends beyond available time slot. "
+                        f"Slot ends at {valid_slot.end_time.strftime('%I:%M %p')}, "
+                        f"but your appointment would end at {appointment_end_time.strftime('%I:%M %p')}. "
+                        f"Please choose an earlier time or shorter duration."
+                    )
             
-            # Check minimum advance booking
-            min_advance = now + timedelta(hours=config.min_advance_booking_hours)
-            if appt_datetime < min_advance:
-                raise forms.ValidationError(
-                    f"Bookings must be made at least {config.min_advance_booking_hours} hours in advance"
+            # CHECK 2: Check for booking conflicts with other appointments
+            if duration_minutes:
+                has_conflict, conflict_booking = check_booking_conflicts(
+                    salesman, appointment_date, appointment_time, duration_minutes,
+                    exclude_booking_id=self.instance.pk if self.instance.pk else None
                 )
+                
+                if has_conflict:
+                    raise forms.ValidationError(
+                        f"This time slot conflicts with an existing booking: "
+                        f"{conflict_booking.client.get_full_name()} at {conflict_booking.appointment_time.strftime('%I:%M %p')}"
+                    )
             
-            # Check maximum advance booking
-            max_advance = now + timedelta(days=config.max_advance_booking_days)
-            if appt_datetime > max_advance:
-                raise forms.ValidationError(
-                    f"Bookings cannot be made more than {config.max_advance_booking_days} days in advance"
+            # CHECK 3: Check for unavailability blocks
+            if duration_minutes:
+                has_unavailable, unavailable_block = check_unavailability_conflicts(
+                    salesman, appointment_date, appointment_time, duration_minutes
                 )
+                
+                if has_unavailable:
+                    raise forms.ValidationError(
+                        f"Salesman is unavailable during this time. "
+                        f"Reason: {unavailable_block.get_reason_display()}"
+                    )
+            
+            # CHECK 4: Check booking time constraints
+            if duration_minutes:
+                config = SystemConfig.get_config()
+                appt_datetime = datetime.combine(appointment_date, appointment_time)
+                now = datetime.now()
+                
+                # Check minimum advance booking
+                min_advance = now + timedelta(hours=config.min_advance_booking_hours)
+                if appt_datetime < min_advance:
+                    raise forms.ValidationError(
+                        f"Bookings must be made at least {config.min_advance_booking_hours} hours in advance. "
+                        f"Earliest available time: {min_advance.strftime('%B %d, %Y at %I:%M %p')}"
+                    )
+                
+                # Check maximum advance booking
+                max_advance = now + timedelta(days=config.max_advance_booking_days)
+                if appt_datetime > max_advance:
+                    raise forms.ValidationError(
+                        f"Bookings cannot be made more than {config.max_advance_booking_days} days in advance. "
+                        f"Latest bookable date: {max_advance.strftime('%B %d, %Y')}"
+                    )
         
         return cleaned_data
     
@@ -559,3 +609,33 @@ class SystemConfigForm(forms.ModelForm):
             'max_advance_booking_days': forms.NumberInput(attrs={'class': 'form-control'}),
             'min_advance_booking_hours': forms.NumberInput(attrs={'class': 'form-control'}),
         }
+
+
+class AvailableTimeSlotForm(forms.ModelForm):
+    class Meta:
+        model = AvailableTimeSlot
+        fields = ['salesman', 'day_of_week', 'start_time', 'end_time', 'is_active']
+        widgets = {
+            'salesman': forms.Select(attrs={'class': 'form-control'}),
+            'day_of_week': forms.Select(attrs={'class': 'form-control'}),
+            'start_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
+            'end_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['salesman'].queryset = User.objects.filter(
+            is_active_salesman=True,
+            is_active=True
+        )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        start_time = cleaned_data.get('start_time')
+        end_time = cleaned_data.get('end_time')
+        
+        if start_time and end_time:
+            if start_time >= end_time:
+                raise forms.ValidationError("End time must be after start time")
+        
+        return cleaned_data

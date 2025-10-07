@@ -1,124 +1,119 @@
 {% extends 'base.html' %}
-{% load crispy_forms_tags %}
 
 {% block title %}{{ title }} - CSASS{% endblock %}
 
 {% block content %}
-<div class="container">
+<div class="container mt-4">
     <div class="row justify-content-center">
-        <div class="col-md-8">
+        <div class="col-lg-10 col-xl-8">
             <div class="card shadow">
                 <div class="card-header bg-primary text-white">
                     <h4 class="mb-0"><i class="bi bi-calendar-plus"></i> {{ title }}</h4>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4">
                     <form method="post">
                         {% csrf_token %}
                         
-                        <h5 class="border-bottom pb-2 mb-3">Client Information</h5>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.client_first_name.id_for_label }}" class="form-label">First Name *</label>
-                                {{ form.client_first_name }}
+                        <h5 class="border-bottom pb-2 mb-4 text-primary">Client Information</h5>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label for="id_client_first_name" class="form-label fw-bold">First Name *</label>
+                                <input type="text" name="client_first_name" class="form-control" id="id_client_first_name" value="{{ form.client_first_name.value|default:'' }}" required>
                                 {% if form.client_first_name.errors %}
-                                <div class="text-danger small">{{ form.client_first_name.errors.0 }}</div>
+                                <div class="text-danger small mt-1">{{ form.client_first_name.errors.0 }}</div>
                                 {% endif %}
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.client_last_name.id_for_label }}" class="form-label">Last Name *</label>
-                                {{ form.client_last_name }}
+                            <div class="col-md-6">
+                                <label for="id_client_last_name" class="form-label fw-bold">Last Name *</label>
+                                <input type="text" name="client_last_name" class="form-control" id="id_client_last_name" value="{{ form.client_last_name.value|default:'' }}" required>
                                 {% if form.client_last_name.errors %}
-                                <div class="text-danger small">{{ form.client_last_name.errors.0 }}</div>
+                                <div class="text-danger small mt-1">{{ form.client_last_name.errors.0 }}</div>
                                 {% endif %}
                             </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.client_email.id_for_label }}" class="form-label">Email *</label>
-                                {{ form.client_email }}
+                            <div class="col-md-6">
+                                <label for="id_client_email" class="form-label fw-bold">Email *</label>
+                                <input type="email" name="client_email" class="form-control" id="id_client_email" value="{{ form.client_email.value|default:'' }}" required>
                                 {% if form.client_email.errors %}
-                                <div class="text-danger small">{{ form.client_email.errors.0 }}</div>
+                                <div class="text-danger small mt-1">{{ form.client_email.errors.0 }}</div>
                                 {% endif %}
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.client_phone.id_for_label }}" class="form-label">Phone *</label>
-                                {{ form.client_phone }}
+                            <div class="col-md-6">
+                                <label for="id_client_phone" class="form-label fw-bold">Phone *</label>
+                                <input type="tel" name="client_phone" class="form-control" id="id_client_phone" value="{{ form.client_phone.value|default:'' }}" required>
                                 {% if form.client_phone.errors %}
-                                <div class="text-danger small">{{ form.client_phone.errors.0 }}</div>
+                                <div class="text-danger small mt-1">{{ form.client_phone.errors.0 }}</div>
                                 {% endif %}
                             </div>
                         </div>
 
-                        <h5 class="border-bottom pb-2 mb-3 mt-4">Appointment Details</h5>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.salesman.id_for_label }}" class="form-label">Salesman *</label>
+                        <h5 class="border-bottom pb-2 mb-4 text-primary">Appointment Details</h5>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label for="id_salesman" class="form-label fw-bold">Salesman *</label>
                                 {{ form.salesman }}
                                 {% if form.salesman.errors %}
-                                <div class="text-danger small">{{ form.salesman.errors.0 }}</div>
+                                <div class="text-danger small mt-1">{{ form.salesman.errors.0 }}</div>
                                 {% endif %}
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.appointment_type.id_for_label }}" class="form-label">Type *</label>
+                            <div class="col-md-6">
+                                <label for="id_appointment_type" class="form-label fw-bold">Type *</label>
                                 {{ form.appointment_type }}
                                 {% if form.appointment_type.errors %}
-                                <div class="text-danger small">{{ form.appointment_type.errors.0 }}</div>
+                                <div class="text-danger small mt-1">{{ form.appointment_type.errors.0 }}</div>
                                 {% endif %}
                             </div>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="{{ form.zoom_link.id_for_label }}" class="form-label">
-                                Meeting Link <span class="text-muted">(for Zoom appointments)</span>
-                            </label>
-                            {{ form.zoom_link }}
-                            {% if form.zoom_link.errors %}
-                            <div class="text-danger small">{{ form.zoom_link.errors.0 }}</div>
-                            {% endif %}
-                            <small class="form-text text-muted">{{ form.zoom_link.help_text }}</small>
-                        </div>
-                    </div>
-                        <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <label for="{{ form.appointment_date.id_for_label }}" class="form-label">Date *</label>
+                            <div class="col-md-4">
+                                <label for="id_appointment_date" class="form-label fw-bold">Date *</label>
                                 {{ form.appointment_date }}
                                 {% if form.appointment_date.errors %}
-                                <div class="text-danger small">{{ form.appointment_date.errors.0 }}</div>
+                                <div class="text-danger small mt-1">{{ form.appointment_date.errors.0 }}</div>
                                 {% endif %}
                             </div>
-                            <div class="col-md-4 mb-3">
-                                <label for="{{ form.appointment_time.id_for_label }}" class="form-label">Time *</label>
+                            <div class="col-md-4">
+                                <label for="id_appointment_time" class="form-label fw-bold">Time *</label>
                                 {{ form.appointment_time }}
                                 {% if form.appointment_time.errors %}
-                                <div class="text-danger small">{{ form.appointment_time.errors.0 }}</div>
+                                <div class="text-danger small mt-1">{{ form.appointment_time.errors.0 }}</div>
                                 {% endif %}
                             </div>
-                            <div class="col-md-4 mb-3">
-                                <label for="{{ form.duration_minutes.id_for_label }}" class="form-label">Duration *</label>
+                            <div class="col-md-4">
+                                <label for="id_duration_minutes" class="form-label fw-bold">Duration *</label>
                                 {{ form.duration_minutes }}
                                 {% if form.duration_minutes.errors %}
-                                <div class="text-danger small">{{ form.duration_minutes.errors.0 }}</div>
+                                <div class="text-danger small mt-1">{{ form.duration_minutes.errors.0 }}</div>
                                 {% endif %}
                             </div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="{{ form.notes.id_for_label }}" class="form-label">Notes</label>
-                            {{ form.notes }}
-                            {% if form.notes.errors %}
-                            <div class="text-danger small">{{ form.notes.errors.0 }}</div>
-                            {% endif %}
+                            <div class="col-12">
+                                <label for="id_zoom_link" class="form-label fw-bold">
+                                    Meeting Link <span class="text-muted fw-normal">(required for Zoom appointments)</span>
+                                </label>
+                                {{ form.zoom_link }}
+                                {% if form.zoom_link.errors %}
+                                <div class="text-danger small mt-1">{{ form.zoom_link.errors.0 }}</div>
+                                {% endif %}
+                                <small class="form-text text-muted d-block mt-1">{{ form.zoom_link.help_text }}</small>
+                            </div>
+                            <div class="col-12">
+                                <label for="id_notes" class="form-label fw-bold">Notes</label>
+                                {{ form.notes }}
+                                {% if form.notes.errors %}
+                                <div class="text-danger small mt-1">{{ form.notes.errors.0 }}</div>
+                                {% endif %}
+                            </div>
                         </div>
 
                         {% if form.non_field_errors %}
                         <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
                             {{ form.non_field_errors }}
                         </div>
                         {% endif %}
 
-                        <div class="d-flex gap-2 justify-content-end">
+                        <div class="d-flex gap-2 justify-content-end pt-3 border-top">
                             <a href="{% url 'calendar' %}" class="btn btn-secondary">
                                 <i class="bi bi-x-circle"></i> Cancel
                             </a>
-                            <button type="submit" class="btn btn-primary">
+                            <button type="submit" class="btn btn-primary px-4">
                                 <i class="bi bi-check-circle"></i> Save Booking
                             </button>
                         </div>

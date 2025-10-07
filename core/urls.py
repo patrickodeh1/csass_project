@@ -32,6 +32,12 @@ urlpatterns = [
     path('availability/<int:pk>/edit/', views.availability_edit, name='availability_edit'),
     path('availability/<int:pk>/delete/', views.availability_delete, name='availability_delete'),
     
+ # Time Slots (Admin)
+    path('admiin/timeslots/', views.timeslots_view, name='timeslots'),
+    path('admiin/timeslots/new/', views.timeslot_create, name='timeslot_create'),
+    path('admiin/timeslots/<int:pk>/edit/', views.timeslot_edit, name='timeslot_edit'),
+    path('admiin/timeslots/<int:pk>/delete/', views.timeslot_delete, name='timeslot_delete'),
+
     # Payroll (admiin)
     path('admiin/payroll/', views.payroll_view, name='payroll'),
     path('admiin/payroll/<int:pk>/finalize/', views.payroll_finalize, name='payroll_finalize'),

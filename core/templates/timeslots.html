@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+
+{% block title %}Available Time Slots - CSASS{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2><i class="bi bi-clock-history"></i> Available Time Slots</h2>
+            <p class="text-muted">Manage when salesmen are available for appointments</p>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'timeslot_create' %}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> Add Time Slot
+            </a>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Filter by Salesman</label>
+                    <select name="salesman" class="form-select" onchange="this.form.submit()">
+                        <option value="">All Salesmen</option>
+                        {% for salesman in salesmen %}
+                        <option value="{{ salesman.id }}" {% if selected_salesman == salesman.id|stringformat:"s" %}selected{% endif %}>
+                            {{ salesman.get_full_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Time Slots Table -->
+    <div class="card shadow">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Salesman</th>
+                            <th>Day of Week</th>
+                            <th>Start Time</th>
+                            <th>End Time</th>
+                            <th>Status</th>
+                            <th>Created By</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for slot in timeslots %}
+                        <tr>
+                            <td><strong>{{ slot.salesman.get_full_name }}</strong></td>
+                            <td>{{ slot.get_day_of_week_display }}</td>
+                            <td>{{ slot.start_time|date:"g:i A" }}</td>
+                            <td>{{ slot.end_time|date:"g:i A" }}</td>
+                            <td>
+                                {% if slot.is_active %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ slot.created_by.get_full_name }}</td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'timeslot_edit' slot.id %}" class="btn btn-outline-primary">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="{% url 'timeslot_delete' slot.id %}" class="btn btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="bi bi-clock" style="font-size: 2rem;"></i>
+                                <p class="mt-2">No time slots configured yet</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

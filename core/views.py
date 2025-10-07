@@ -14,9 +14,9 @@ from django.contrib.auth.views import (
 import csv
 from django.urls import reverse_lazy
 from .models import (Booking, Client, Unavailability, PayrollPeriod, PayrollAdjustment, 
-                     SystemConfig, AuditLog, CompanyHoliday, User)
+                     SystemConfig, AvailableTimeSlot, AuditLog, CompanyHoliday, User)
 from .forms import (LoginForm, BookingForm, CancelBookingForm, UnavailabilityForm,
-                    PayrollAdjustmentForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
+                    PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
 from .decorators import group_required, admin_required
 from .utils import (get_current_payroll_period, get_payroll_periods, send_booking_confirmation,
                     send_booking_cancellation, check_booking_conflicts, check_unavailability_conflicts)
@@ -960,3 +960,72 @@ def audit_log_view(request):
     }
     
     return render(request, 'audit_log.html', context)
+
+# ============================================================
+@login_required
+@admin_required
+def timeslots_view(request):
+    """View all available time slots"""
+    salesman_filter = request.GET.get('salesman')
+    
+    timeslots = AvailableTimeSlot.objects.select_related('salesman', 'created_by').order_by('salesman', 'day_of_week', 'start_time')
+    
+    if salesman_filter:
+        timeslots = timeslots.filter(salesman_id=salesman_filter)
+    
+    salesmen = User.objects.filter(is_active_salesman=True, is_active=True)
+    
+    context = {
+        'timeslots': timeslots,
+        'salesmen': salesmen,
+        'selected_salesman': salesman_filter,
+    }
+    
+    return render(request, 'timeslots.html', context)
+
+@login_required
+@admin_required
+def timeslot_create(request):
+    """Create new time slot"""
+    if request.method == 'POST':
+        form = AvailableTimeSlotForm(request.POST)
+        if form.is_valid():
+            timeslot = form.save(commit=False)
+            timeslot.created_by = request.user
+            timeslot.save()
+            messages.success(request, 'Time slot created successfully!')
+            return redirect('timeslots')
+    else:
+        form = AvailableTimeSlotForm()
+    
+    return render(request, 'timeslot_form.html', {'form': form, 'title': 'Create Time Slot'})
+
+@login_required
+@admin_required
+def timeslot_edit(request, pk):
+    """Edit existing time slot"""
+    timeslot = get_object_or_404(AvailableTimeSlot, pk=pk)
+    
+    if request.method == 'POST':
+        form = AvailableTimeSlotForm(request.POST, instance=timeslot)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Time slot updated successfully!')
+            return redirect('timeslots')
+    else:
+        form = AvailableTimeSlotForm(instance=timeslot)
+    
+    return render(request, 'timeslot_form.html', {'form': form, 'title': 'Edit Time Slot', 'timeslot': timeslot})
+
+@login_required
+@admin_required
+def timeslot_delete(request, pk):
+    """Delete time slot"""
+    timeslot = get_object_or_404(AvailableTimeSlot, pk=pk)
+    
+    if request.method == 'POST':
+        timeslot.delete()
+        messages.success(request, 'Time slot deleted successfully!')
+        return redirect('timeslots')
+    
+    return render(request, 'timeslot_delete.html', {'timeslot': timeslot})
