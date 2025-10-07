@@ -23,15 +23,16 @@ urlpatterns = [
     path('booking/<int:pk>/edit/', views.booking_edit, name='booking_edit'),
     path('booking/<int:pk>/cancel/', views.booking_cancel, name='booking_cancel'),
     
+    # Booking Approvals (Admin)
+    path('admiin/bookings/pending/', views.pending_bookings_view, name='pending_bookings'),
+    path('admiin/bookings/<int:pk>/approve/', views.booking_approve, name='booking_approve'),
+    path('admiin/bookings/<int:pk>/decline/', views.booking_decline, name='booking_decline'),
+    
     # Commissions
     path('commissions/', views.commissions_view, name='commissions'),
     
-    # Availability
-    path('availability/', views.availability_view, name='availability'),
-    path('availability/new/', views.availability_create, name='availability_create'),
-    path('availability/<int:pk>/edit/', views.availability_edit, name='availability_edit'),
-    path('availability/<int:pk>/delete/', views.availability_delete, name='availability_delete'),
-    
+    path('pending-count/', views.pending_bookings_count_api, name='pending_count_api'),
+
  # Time Slots (Admin)
     path('admiin/timeslots/', views.timeslots_view, name='timeslots'),
     path('admiin/timeslots/new/', views.timeslot_create, name='timeslot_create'),

@@ -25,3 +25,12 @@ def admin_required(view_func):
             raise PermissionDenied
         return view_func(request, *args, **kwargs)
     return wrapper
+
+def remote_agent_required(view_func):
+    """Decorator to require remote_agent role"""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.groups.filter(name='remote_agent').exists():
+            raise PermissionDenied
+        return view_func(request, *args, **kwargs)
+    return wrapper

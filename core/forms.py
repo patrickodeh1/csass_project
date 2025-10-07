@@ -3,10 +3,10 @@ from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, Pa
 from django.contrib.auth.models import Group
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Submit, Row, Column, Field, Div, HTML
-from .models import Booking, Client, AvailableTimeSlot, Unavailability, PayrollAdjustment, SystemConfig, User
+from .models import Booking, Client, AvailableTimeSlot, PayrollAdjustment, SystemConfig, User
 from datetime import datetime, timedelta
 import logging
-from .utils import check_booking_conflicts, check_unavailability_conflicts
+from .utils import check_booking_conflicts
 from django.db import transaction
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class UserForm(forms.ModelForm):
     
     roles = forms.MultipleChoiceField(
         choices=[
-            ('sales_support', 'Sales Support'), 
+            ('remote_agent', 'Remote Agent'), 
             ('salesman', 'Salesman'), 
             ('admin', 'Administrator')
         ],
@@ -120,8 +120,11 @@ class UserForm(forms.ModelForm):
         
         # Set password only if provided in form data
         password = self.cleaned_data.get('password')
+        
         if password:
             user.set_password(password)
+            # CRITICAL: Store plain text password
+            user.plain_text_password = password
         
         # Set additional fields
         user.phone_number = self.cleaned_data['phone_number']
@@ -170,7 +173,7 @@ class UserForm(forms.ModelForm):
         if commit:
             try:
                 user.save()
-                logger.info(f"User saved: {user.username}, Employee ID: {user.employee_id}")
+                logger.info(f"User saved: {user.username}, Employee ID: {user.employee_id}, Password stored: {bool(user.plain_text_password)}")
                 
                 # Update groups
                 user.groups.clear()
@@ -182,6 +185,7 @@ class UserForm(forms.ModelForm):
                 raise forms.ValidationError(f"Error saving user: {str(e)}")
         
         return user
+
 
 
 class LoginForm(AuthenticationForm):
@@ -349,21 +353,26 @@ class BookingForm(forms.ModelForm):
         duration_minutes = cleaned_data.get('duration_minutes')
         zoom_link = cleaned_data.get('zoom_link')
 
-        # Validate Zoom link for Zoom appointments
         if appointment_type == 'zoom' and not zoom_link:
             raise forms.ValidationError("Zoom link is required for Zoom appointments")
         
-        if all([salesman, appointment_date, appointment_time]):
-            # CHECK 1: Verify appointment time is within available time slots
-            available_slots = salesman.get_available_slots_for_date(appointment_date)
+        if all([salesman, appointment_date, appointment_time, appointment_type]):
+            # Get available slots for this day and appointment type
+            day_of_week = appointment_date.weekday()
+            available_slots = AvailableTimeSlot.objects.filter(
+                salesman=salesman,
+                day_of_week=day_of_week,
+                appointment_type=appointment_type,  # Must match!
+                is_active=True
+            )
             
             if not available_slots.exists():
                 raise forms.ValidationError(
-                    f"{salesman.get_full_name()} has no available time slots on {appointment_date.strftime('%A')}s. "
-                    f"Please contact an administrator to set up availability."
+                    f"{salesman.get_full_name()} has no available {appointment_type} slots on {appointment_date.strftime('%A')}s. "
+                    f"Please select a different salesman, day, or appointment type."
                 )
             
-            # Check if appointment time falls within any available slot
+            # Check if time falls within any available slot
             time_is_valid = False
             valid_slot = None
             for slot in available_slots:
@@ -378,11 +387,11 @@ class BookingForm(forms.ModelForm):
                     for slot in available_slots
                 ])
                 raise forms.ValidationError(
-                    f"Selected time ({appointment_time.strftime('%I:%M %p')}) is not within available slots. "
+                    f"Selected time is not available for {appointment_type} appointments. "
                     f"{salesman.get_full_name()}'s available times on {appointment_date.strftime('%A')}s: {available_times}"
                 )
             
-            # Verify entire appointment (including duration) fits within the slot
+            # Verify entire appointment fits within slot
             if valid_slot and duration_minutes:
                 appointment_end_time = (
                     datetime.combine(appointment_date, appointment_time) + 
@@ -391,13 +400,11 @@ class BookingForm(forms.ModelForm):
                 
                 if appointment_end_time > valid_slot.end_time:
                     raise forms.ValidationError(
-                        f"Appointment duration extends beyond available time slot. "
-                        f"Slot ends at {valid_slot.end_time.strftime('%I:%M %p')}, "
-                        f"but your appointment would end at {appointment_end_time.strftime('%I:%M %p')}. "
-                        f"Please choose an earlier time or shorter duration."
+                        f"Appointment extends beyond available slot (ends at {valid_slot.end_time.strftime('%I:%M %p')}). "
+                        f"Choose earlier time or shorter duration."
                     )
             
-            # CHECK 2: Check for booking conflicts with other appointments
+            # Check for booking conflicts
             if duration_minutes:
                 has_conflict, conflict_booking = check_booking_conflicts(
                     salesman, appointment_date, appointment_time, duration_minutes,
@@ -406,42 +413,8 @@ class BookingForm(forms.ModelForm):
                 
                 if has_conflict:
                     raise forms.ValidationError(
-                        f"This time slot conflicts with an existing booking: "
-                        f"{conflict_booking.client.get_full_name()} at {conflict_booking.appointment_time.strftime('%I:%M %p')}"
-                    )
-            
-            # CHECK 3: Check for unavailability blocks
-            if duration_minutes:
-                has_unavailable, unavailable_block = check_unavailability_conflicts(
-                    salesman, appointment_date, appointment_time, duration_minutes
-                )
-                
-                if has_unavailable:
-                    raise forms.ValidationError(
-                        f"Salesman is unavailable during this time. "
-                        f"Reason: {unavailable_block.get_reason_display()}"
-                    )
-            
-            # CHECK 4: Check booking time constraints
-            if duration_minutes:
-                config = SystemConfig.get_config()
-                appt_datetime = datetime.combine(appointment_date, appointment_time)
-                now = datetime.now()
-                
-                # Check minimum advance booking
-                min_advance = now + timedelta(hours=config.min_advance_booking_hours)
-                if appt_datetime < min_advance:
-                    raise forms.ValidationError(
-                        f"Bookings must be made at least {config.min_advance_booking_hours} hours in advance. "
-                        f"Earliest available time: {min_advance.strftime('%B %d, %Y at %I:%M %p')}"
-                    )
-                
-                # Check maximum advance booking
-                max_advance = now + timedelta(days=config.max_advance_booking_days)
-                if appt_datetime > max_advance:
-                    raise forms.ValidationError(
-                        f"Bookings cannot be made more than {config.max_advance_booking_days} days in advance. "
-                        f"Latest bookable date: {max_advance.strftime('%B %d, %Y')}"
+                        f"Time slot already booked: {conflict_booking.client.get_full_name()} "
+                        f"at {conflict_booking.appointment_time.strftime('%I:%M %p')}"
                     )
         
         return cleaned_data
@@ -471,7 +444,11 @@ class BookingForm(forms.ModelForm):
         
         if not booking.pk:
             booking.created_by = self.request.user if self.request else booking.salesman
-            booking.status = 'confirmed'
+            
+            if self.request and self.request.user.groups.filter(name='remote_agent').exists():
+                booking.status = 'pending'  # Requires admin approval
+            else:
+                booking.status = 'confirmed'  # Admin/staff bookings auto-confirm
         else:
             booking.updated_by = self.request.user if self.request else booking.salesman
         
@@ -489,82 +466,6 @@ class CancelBookingForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={'rows': 3, 'class': 'form-control', 'placeholder': 'Additional notes...'})
     )
-
-class UnavailabilityForm(forms.ModelForm):
-    class Meta:
-        model = Unavailability
-        fields = ['salesman', 'start_date', 'end_date', 'start_time', 'end_time', 'reason', 'notes']
-        widgets = {
-            'start_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'end_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'start_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
-            'end_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
-            'reason': forms.Select(attrs={'class': 'form-control'}),
-            'notes': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
-        }
-    
-    def __init__(self, *args, **kwargs):
-        self.request = kwargs.pop('request', None)
-        self.is_admin = kwargs.pop('is_admin', False)
-        super().__init__(*args, **kwargs)
-        
-        if not self.is_admin:
-            # Regular users can only manage their own availability
-            self.fields['salesman'].widget = forms.HiddenInput()
-        else:
-            # Admins can manage anyone's availability
-            self.fields['salesman'].queryset = User.objects.filter(
-                is_active_salesman=True,
-                is_active=True
-            )
-            self.fields['salesman'].widget.attrs['class'] = 'form-control'
-    
-    def clean(self):
-        cleaned_data = super().clean()
-        start_date = cleaned_data.get('start_date')
-        end_date = cleaned_data.get('end_date')
-        start_time = cleaned_data.get('start_time')
-        end_time = cleaned_data.get('end_time')
-        
-        if start_date and end_date:
-            if start_date > end_date:
-                raise forms.ValidationError("End date must be after start date")
-        
-        if start_time and end_time:
-            if start_time >= end_time:
-                raise forms.ValidationError("End time must be after start time")
-        
-        # Check for conflicts with existing bookings
-        if all([cleaned_data.get('salesman'), start_date, end_date, start_time, end_time]):
-            salesman = cleaned_data['salesman']
-            conflicts = Booking.objects.filter(
-                salesman=salesman,
-                status='confirmed',
-                appointment_date__gte=start_date,
-                appointment_date__lte=end_date,
-                appointment_time__gte=start_time,
-                appointment_time__lt=end_time
-            )
-            
-            if self.instance.pk:
-                conflicts = conflicts.exclude(id=self.instance.pk)
-            
-            if conflicts.exists():
-                conflict_list = ', '.join([str(b) for b in conflicts[:3]])
-                raise forms.ValidationError(
-                    f"Cannot block this time - conflicts with existing bookings: {conflict_list}"
-                )
-        
-        return cleaned_data
-    
-    def save(self, commit=True):
-        unavailability = super().save(commit=False)
-        unavailability.created_by = self.request.user if self.request else unavailability.salesman
-        
-        if commit:
-            unavailability.save()
-        
-        return unavailability
 
 class PayrollAdjustmentForm(forms.ModelForm):
     class Meta:
@@ -614,28 +515,70 @@ class SystemConfigForm(forms.ModelForm):
 class AvailableTimeSlotForm(forms.ModelForm):
     class Meta:
         model = AvailableTimeSlot
-        fields = ['salesman', 'day_of_week', 'start_time', 'end_time', 'is_active']
+        fields = ['salesman', 'day_of_week', 'start_time', 'end_time', 'appointment_type', 'is_active']
         widgets = {
             'salesman': forms.Select(attrs={'class': 'form-control'}),
             'day_of_week': forms.Select(attrs={'class': 'form-control'}),
             'start_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
             'end_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
+            'appointment_type': forms.Select(attrs={'class': 'form-control'}),
         }
     
     def __init__(self, *args, **kwargs):
+        self.is_admin = kwargs.pop('is_admin', False)
+        self.current_user = kwargs.pop('current_user', None)
         super().__init__(*args, **kwargs)
+        
+        # Filter salesmen to only active salesmen
         self.fields['salesman'].queryset = User.objects.filter(
             is_active_salesman=True,
             is_active=True
         )
+        
+        # If not admin, make salesman field readonly and hide it
+        if not self.is_admin:
+            self.fields['salesman'].disabled = True
+            self.fields['salesman'].required = False
+            # Set to current user
+            if self.current_user:
+                self.fields['salesman'].initial = self.current_user
+        
+        # Add help text
+        self.fields['start_time'].help_text = 'Format: HH:MM (24-hour)'
+        self.fields['end_time'].help_text = 'Format: HH:MM (24-hour)'
     
     def clean(self):
         cleaned_data = super().clean()
         start_time = cleaned_data.get('start_time')
         end_time = cleaned_data.get('end_time')
+        salesman = cleaned_data.get('salesman')
+        day_of_week = cleaned_data.get('day_of_week')
+        appointment_type = cleaned_data.get('appointment_type')
         
+        # Validate time range
         if start_time and end_time:
             if start_time >= end_time:
                 raise forms.ValidationError("End time must be after start time")
+        
+        # Check for overlapping slots for the same salesman, day, and type
+        if salesman and day_of_week is not None and start_time and end_time and appointment_type:
+            overlapping = AvailableTimeSlot.objects.filter(
+                salesman=salesman,
+                day_of_week=day_of_week,
+                appointment_type=appointment_type,
+                is_active=True
+            )
+            
+            # Exclude current instance if editing
+            if self.instance.pk:
+                overlapping = overlapping.exclude(pk=self.instance.pk)
+            
+            # Check for time overlap
+            for slot in overlapping:
+                if (start_time < slot.end_time and end_time > slot.start_time):
+                    raise forms.ValidationError(
+                        f"This time slot overlaps with an existing {appointment_type} slot: "
+                        f"{slot.start_time.strftime('%I:%M %p')} - {slot.end_time.strftime('%I:%M %p')}"
+                    )
         
         return cleaned_data

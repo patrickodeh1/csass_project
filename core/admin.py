@@ -1,7 +1,7 @@
 from django.contrib import admin
-from .models import (User, Client, Booking, Unavailability, 
+from .models import (User, Client, Booking, 
                      PayrollPeriod, PayrollAdjustment, CompanyHoliday, 
-                     SystemConfig, AuditLog)
+                     SystemConfig, AuditLog, AvailableTimeSlot)
 
 @admin.register(User)
 class User(admin.ModelAdmin):
@@ -25,23 +25,13 @@ class BookingAdmin(admin.ModelAdmin):
     readonly_fields = ['created_at', 'updated_at', 'canceled_at']
     date_hierarchy = 'appointment_date'
 
-@admin.register(Unavailability)
-class UnavailabilityAdmin(admin.ModelAdmin):
-    list_display = ['salesman', 'start_date', 'end_date', 'start_time', 'end_time', 'reason']
-    list_filter = ['reason', 'start_date']
-    search_fields = ['salesman__first_name', 'salesman__last_name']
+admin.site.register(AvailableTimeSlot)
 
-@admin.register(PayrollPeriod)
-class PayrollPeriodAdmin(admin.ModelAdmin):
-    list_display = ['start_date', 'end_date', 'status', 'finalized_by', 'finalized_at']
-    list_filter = ['status', 'start_date']
-    readonly_fields = ['finalized_at', 'created_at']
+admin.site.register(PayrollPeriod)
 
-@admin.register(PayrollAdjustment)
-class PayrollAdjustmentAdmin(admin.ModelAdmin):
-    list_display = ['payroll_period', 'user', 'adjustment_type', 'amount', 'created_by', 'created_at']
-    list_filter = ['adjustment_type', 'payroll_period']
-    search_fields = ['user__first_name', 'user__last_name', 'reason']
+
+admin.site.register(PayrollAdjustment)
+
 
 @admin.register(CompanyHoliday)
 class CompanyHolidayAdmin(admin.ModelAdmin):

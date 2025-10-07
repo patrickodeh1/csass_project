@@ -82,47 +82,48 @@
             <div class="table-responsive">
                 <table class="table table-bordered calendar-table">
                     <thead>
-                            <tr>
-                                <th>Sunday</th>
-                                <th>Monday</th>
-                                <th>Tuesday</th>
-                                <th>Wednesday</th>
-                                <th>Thursday</th>
-                                <th>Friday</th>
-                                <th>Saturday</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for week in calendar_weeks %}
-                            <tr>
-                                {% for day in week %}
-                                <td class="calendar-day" style="height: 120px; vertical-align: top; {% if day == 0 %}background-color: #f8f9fa;{% endif %}">
-                                    {% if day != 0 %}
-                                        <div class="fw-bold mb-2">{{ day }}</div>
-                                        
-                                        {% for booking in bookings %}
-                                            {% if booking.appointment_date.day == day and booking.appointment_date.month == current_date.month %}
-                                            <div class="badge bg-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning{% endif %} text-dark mb-1 text-truncate w-100" 
-                                                style="cursor: pointer; font-size: 0.65rem; text-align: left;" 
-                                                onclick="window.location.href='{% url 'booking_detail' booking.id %}'">
-                                                {{ booking.appointment_time|date:"g:iA" }} {{ booking.client.first_name }}
-                                            </div>
-                                            {% endif %}
-                                        {% endfor %}
-                                    {% endif %}
-                                </td>
-                                {% endfor %}
-                            </tr>
+                        <tr>
+                            <th>Sunday</th>
+                            <th>Monday</th>
+                            <th>Tuesday</th>
+                            <th>Wednesday</th>
+                            <th>Thursday</th>
+                            <th>Friday</th>
+                            <th>Saturday</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for week in calendar_weeks %}
+                        <tr>
+                            {% for day in week %}
+                            <td class="calendar-day" style="height: 120px; vertical-align: top; {% if day == 0 %}background-color: #f8f9fa;{% endif %}">
+                                {% if day != 0 %}
+                                    <div class="fw-bold mb-2">{{ day }}</div>
+                                    
+                                    {% for booking in bookings %}
+                                        {% if booking.appointment_date.day == day and booking.appointment_date.month == current_date.month %}
+                                        <div class="badge bg-{% if booking.status == 'pending' %}warning text-dark{% elif booking.appointment_type == 'zoom' %}primary{% else %}secondary{% endif %} mb-1 text-truncate w-100" 
+                                            style="cursor: pointer; font-size: 0.65rem; text-align: left;" 
+                                            onclick="window.location.href='{% url 'booking_detail' booking.id %}'">
+                                            {% if booking.status == 'pending' %}<i class="bi bi-hourglass-split"></i>{% endif %}
+                                            {{ booking.appointment_time|date:"g:iA" }} {{ booking.client.first_name }}
+                                        </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
+                            </td>
                             {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
             {% elif view_mode == 'week' %}
             <!-- Week View -->
             <div class="row">
                 {% for booking in bookings %}
                 <div class="col-md-12 mb-2">
-                    <div class="card border-start border-5 border-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning{% endif %}">
+                    <div class="card border-start border-5 border-{% if booking.status == 'pending' %}warning{% elif booking.appointment_type == 'zoom' %}primary{% else %}secondary{% endif %}">
                         <div class="card-body py-2">
                             <div class="row align-items-center">
                                 <div class="col-md-2">
@@ -138,9 +139,19 @@
                                     {{ booking.salesman.get_full_name }}
                                 </div>
                                 <div class="col-md-2">
-                                    <span class="badge bg-{% if booking.status == 'confirmed' %}success{% elif booking.status == 'completed' %}secondary{% else %}danger{% endif %}">
-                                        {{ booking.get_status_display }}
-                                    </span>
+                                    {% if booking.status == 'pending' %}
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="bi bi-hourglass-split"></i> Pending
+                                        </span>
+                                    {% elif booking.status == 'confirmed' %}
+                                        <span class="badge bg-success">Confirmed</span>
+                                    {% elif booking.status == 'completed' %}
+                                        <span class="badge bg-secondary">Completed</span>
+                                    {% elif booking.status == 'declined' %}
+                                        <span class="badge bg-danger">Declined</span>
+                                    {% else %}
+                                        <span class="badge bg-dark">{{ booking.get_status_display }}</span>
+                                    {% endif %}
                                 </div>
                                 <div class="col-md-1 text-end">
                                     <a href="{% url 'booking_detail' booking.id %}" class="btn btn-sm btn-outline-primary">
@@ -162,10 +173,11 @@
             <!-- Day View -->
             <div class="list-group">
                 {% for booking in bookings %}
-                <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action">
+                <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action {% if booking.status == 'pending' %}list-group-item-warning{% endif %}">
                     <div class="d-flex w-100 justify-content-between">
                         <h6 class="mb-1">
-                            <span class="badge bg-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning{% endif %} me-2">
+                            <span class="badge bg-{% if booking.status == 'pending' %}warning text-dark{% elif booking.appointment_type == 'zoom' %}primary{% else %}secondary{% endif %} me-2">
+                                {% if booking.status == 'pending' %}<i class="bi bi-hourglass-split"></i> Pending | {% endif %}
                                 {{ booking.get_appointment_type_display }}
                             </span>
                             {{ booking.appointment_time|date:"g:i A" }} - {{ booking.client.first_name }} {{ booking.client.last_name }}
@@ -188,12 +200,12 @@
 
     <!-- Legend -->
     <div class="mt-3">
+        <span class="badge bg-warning text-dark me-2"><i class="bi bi-hourglass-split"></i> Pending Approval</span>
         <span class="badge bg-primary me-2"><i class="bi bi-circle-fill"></i> Zoom</span>
-        <span class="badge bg-warning text-dark me-2"><i class="bi bi-circle-fill"></i> In-Person</span>
+        <span class="badge bg-secondary me-2"><i class="bi bi-circle-fill"></i> In-Person</span>
         <span class="badge bg-success me-2"><i class="bi bi-circle-fill"></i> Confirmed</span>
         <span class="badge bg-secondary me-2"><i class="bi bi-circle-fill"></i> Completed</span>
-        <span class="badge bg-danger me-2"><i class="bi bi-circle-fill"></i> Canceled</span>
-        <span class="badge bg-dark me-2"><i class="bi bi-circle-fill"></i> Unavailable</span>
+        <span class="badge bg-danger me-2"><i class="bi bi-circle-fill"></i> Canceled/Declined</span>
     </div>
 </div>
 {% endblock %}

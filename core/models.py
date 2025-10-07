@@ -46,6 +46,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
+    plain_text_password = models.CharField(max_length=255, blank=True, null=True)
     
     # Additional fields
     employee_id = models.CharField(max_length=20, unique=True, null=True, blank=True)
@@ -173,10 +174,12 @@ class Client(models.Model):
 
 class Booking(models.Model):
     STATUS_CHOICES = [
+        ('pending', 'Pending'),
         ('confirmed', 'Confirmed'),
         ('completed', 'Completed'),
         ('canceled', 'Canceled'),
         ('no_show', 'No Show'),
+        ('declined', 'Declined'),
     ]
     
     TYPE_CHOICES = [
@@ -198,7 +201,7 @@ class Booking(models.Model):
     appointment_time = models.TimeField()
     duration_minutes = models.IntegerField(default=60)
     appointment_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='confirmed')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     zoom_link = models.URLField(blank=True)
     notes = models.TextField(blank=True)
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -212,7 +215,12 @@ class Booking(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='bookings_created')
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name='bookings_updated')
-    
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name='bookings_approved')
+    declined_at = models.DateTimeField(null=True, blank=True)
+    declined_by = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name='bookings_declined')
+    decline_reason = models.TextField(blank=True)
+
     class Meta:
         indexes = [
             models.Index(fields=['appointment_date']),
@@ -227,6 +235,18 @@ class Booking(models.Model):
     def __str__(self):
         return f"{self.client} with {self.salesman.get_full_name()} on {self.appointment_date}"
     
+    def counts_for_commission(self):
+        """Check if booking counts for commission - must be confirmed or completed"""
+        return self.status in ['confirmed', 'completed']
+    
+    def can_be_approved(self):
+        """Check if booking can be approved"""
+        return self.status == 'pending' and not self.is_in_past()
+    
+    def can_be_declined(self):
+        """Check if booking can be declined"""
+        return self.status == 'pending'
+
     def get_end_time(self):
         """Calculate end time based on duration"""
         dt = datetime.combine(self.appointment_date, self.appointment_time)
@@ -261,45 +281,14 @@ class Booking(models.Model):
        
         # Set commission amount if not set
         if not self.commission_amount:
-            self.commission_amount = self.salesman.get_commission_rate()
+            if self.created_by and self.created_by.groups.filter(name='remote_agent').exists():
+                self.commission_amount = Decimal('50.00')  # Both Zoom and In-Person
+            else:
+                self.commission_amount = Decimal('0.00') 
         
         super().save(*args, **kwargs)
 
-class Unavailability(models.Model):
-    REASON_CHOICES = [
-        ('vacation', 'Vacation'),
-        ('sick', 'Sick Leave'),
-        ('training', 'Training'),
-        ('personal', 'Personal Appointment'),
-        ('company_holiday', 'Company Holiday'),
-        ('other', 'Other'),
-    ]
-    
-    salesman = models.ForeignKey(User, on_delete=models.CASCADE, related_name='unavailability_blocks')
-    start_date = models.DateField()
-    end_date = models.DateField()
-    start_time = models.TimeField()
-    end_time = models.TimeField()
-    reason = models.CharField(max_length=50, choices=REASON_CHOICES)
-    notes = models.TextField(blank=True)
-    is_recurring = models.BooleanField(default=False)
-    recurrence_pattern = models.JSONField(null=True, blank=True)
-    parent_block = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='occurrences')
-    created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='unavailability_created')
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['salesman']),
-            models.Index(fields=['start_date']),
-            models.Index(fields=['salesman', 'start_date', 'end_date']),
-        ]
-        ordering = ['start_date', 'start_time']
-    
-    def __str__(self):
-        return f"{self.salesman.get_full_name()} - {self.reason} ({self.start_date})"
-    
+
     def conflicts_with_booking(self):
         """Check if this unavailability conflicts with any confirmed bookings"""
         return Booking.objects.filter(
@@ -449,8 +438,14 @@ class AuditLog(models.Model):
         user_str = self.user.get_full_name() if self.user else 'System'
         return f"{user_str} - {self.action} {self.entity_type} ({self.timestamp})"
 
+
 class AvailableTimeSlot(models.Model):
-    """Admin-defined time slots where bookings are allowed"""
+    """Admin-defined time slots for bookings"""
+    APPOINTMENT_TYPE_CHOICES = [
+        ('zoom', 'Zoom'),
+        ('in_person', 'In-Person'),
+    ]
+    
     salesman = models.ForeignKey(User, on_delete=models.CASCADE, related_name='available_timeslots')
     day_of_week = models.IntegerField(
         choices=[
@@ -465,6 +460,11 @@ class AvailableTimeSlot(models.Model):
     )
     start_time = models.TimeField()
     end_time = models.TimeField()
+    appointment_type = models.CharField(
+        max_length=20, 
+        choices=APPOINTMENT_TYPE_CHOICES,
+        help_text="Type of appointments allowed in this slot"
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='timeslots_created')
@@ -472,11 +472,11 @@ class AvailableTimeSlot(models.Model):
     class Meta:
         ordering = ['salesman', 'day_of_week', 'start_time']
         indexes = [
-            models.Index(fields=['salesman', 'day_of_week', 'is_active']),
+            models.Index(fields=['salesman', 'day_of_week', 'appointment_type', 'is_active']),
         ]
     
     def __str__(self):
-        return f"{self.salesman.get_full_name()} - {self.get_day_of_week_display()} {self.start_time}-{self.end_time}"
+        return f"{self.salesman.get_full_name()} - {self.get_day_of_week_display()} {self.start_time}-{self.end_time} ({self.get_appointment_type_display()})"
     
     def is_time_in_slot(self, time_obj):
         """Check if a given time falls within this slot"""

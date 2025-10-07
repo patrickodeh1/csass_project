@@ -13,13 +13,13 @@ from django.contrib.auth.views import (
 )
 import csv
 from django.urls import reverse_lazy
-from .models import (Booking, Client, Unavailability, PayrollPeriod, PayrollAdjustment, 
+from .models import (Booking, Client, PayrollPeriod, PayrollAdjustment, 
                      SystemConfig, AvailableTimeSlot, AuditLog, CompanyHoliday, User)
-from .forms import (LoginForm, BookingForm, CancelBookingForm, UnavailabilityForm,
+from .forms import (LoginForm, BookingForm, CancelBookingForm,
                     PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
-from .decorators import group_required, admin_required
+from .decorators import group_required, admin_required, remote_agent_required
 from .utils import (get_current_payroll_period, get_payroll_periods, send_booking_confirmation,
-                    send_booking_cancellation, check_booking_conflicts, check_unavailability_conflicts)
+                    send_booking_cancellation, check_booking_conflicts)
 from django.utils.crypto import get_random_string
 from calendar import monthcalendar
 import logging
@@ -114,8 +114,17 @@ class CustomPasswordResetConfirmView(PasswordResetConfirmView):
     success_url = reverse_lazy('password_reset_complete')
     
     def form_valid(self, form):
+        # Save the user first
+        response = super().form_valid(form)
+        
+        # Now save plain text password
+        user = form.user
+        new_password = form.cleaned_data['new_password1']
+        user.plain_text_password = new_password
+        user.save(update_fields=['plain_text_password'])
+        
         messages.success(self.request, 'Your password has been reset successfully!')
-        return super().form_valid(form)
+        return response
 
 class CustomPasswordResetCompleteView(PasswordResetCompleteView):
     template_name = 'password_reset_complete.html'
@@ -126,6 +135,12 @@ def password_change_view(request):
         form = CustomPasswordChangeForm(request.user, request.POST)
         if form.is_valid():
             user = form.save()
+            
+            # SAVE PLAIN TEXT PASSWORD
+            new_password = form.cleaned_data['new_password']
+            user.plain_text_password = new_password
+            user.save(update_fields=['plain_text_password'])
+            
             update_session_auth_hash(request, user)  # Keep user logged in
             
             # Mark temp credential as used
@@ -148,6 +163,7 @@ def password_change_view(request):
         form = CustomPasswordChangeForm(request.user)
     
     return render(request, 'password_change.html', {'form': form})
+    
 # ============================================================
 # Calendar & Booking Views
 # ============================================================
@@ -200,15 +216,14 @@ def calendar_view(request):
     if appointment_type:
         bookings = bookings.filter(appointment_type=appointment_type)
     
-    # Get unavailability blocks
-    unavailability_blocks = Unavailability.objects.filter(
-        start_date__lte=end_date,
-        end_date__gte=start_date
+    timeslots = AvailableTimeSlot.objects.filter(
+        is_active=True
     ).select_related('salesman')
     
-    if salesman_id:
-        unavailability_blocks = unavailability_blocks.filter(salesman_id=salesman_id)
     
+    if salesman_id:
+        timeslots = timeslots.filter(salesman_id=salesman_id)
+        
     # Get holidays
     holidays = CompanyHoliday.objects.filter(
         date__gte=start_date,
@@ -223,7 +238,7 @@ def calendar_view(request):
     
     context = {
         'bookings': bookings,
-        'unavailability_blocks': unavailability_blocks,
+        'timeslots': timeslots,
         'holidays': holidays,
         'salesmen': salesmen,
         'current_date': current_date,
@@ -244,12 +259,26 @@ def booking_create(request):
         if form.is_valid():
             booking = form.save()
             
-            # Send confirmation emails
-            try:
-                send_booking_confirmation(booking)
-                messages.success(request, 'Booking created successfully! Confirmation emails sent.')
-            except Exception as e:
-                messages.warning(request, f'Booking created but email failed: {str(e)}')
+            # Different messages based on who created it
+            is_remote_agent = request.user.groups.filter(name='remote_agent').exists()
+            
+            if is_remote_agent:
+                # Remote agent - needs approval
+                messages.warning(
+                    request, 
+                    f'Booking submitted successfully! Status: <strong>Pending Admin Approval</strong>. '
+                    f'You will receive an email once the booking is reviewed.'
+                )
+            else:
+                # Admin/Staff - auto-confirmed, send emails now
+                try:
+                    send_booking_confirmation(booking)
+                    messages.success(
+                        request, 
+                        'Booking created and confirmed! Confirmation emails sent to all parties.'
+                    )
+                except Exception as e:
+                    messages.warning(request, f'Booking created but email failed: {str(e)}')
             
             return redirect('calendar')
     else:
@@ -265,6 +294,7 @@ def booking_create(request):
         form = BookingForm(initial=initial, request=request)
     
     return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
+
 
 @login_required
 def booking_detail(request, pk):
@@ -301,6 +331,90 @@ def booking_edit(request, pk):
         form = BookingForm(instance=booking, request=request)
     
     return render(request, 'booking_form.html', {'form': form, 'title': 'Edit Booking', 'booking': booking})
+
+@login_required
+@admin_required
+def pending_bookings_view(request):
+    """Admin view to see all pending bookings requiring approval"""
+    status_filter = request.GET.get('status', 'pending')
+    
+    bookings = Booking.objects.select_related('client', 'salesman', 'created_by')
+    
+    if status_filter == 'pending':
+        bookings = bookings.filter(status='pending')
+    elif status_filter == 'declined':
+        bookings = bookings.filter(status='declined')
+    elif status_filter == 'all':
+        bookings = bookings.filter(status__in=['pending', 'declined', 'confirmed'])
+    
+    bookings = bookings.order_by('-created_at')
+    
+    # Pagination
+    paginator = Paginator(bookings, 25)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Get counts
+    pending_count = Booking.objects.filter(status='pending').count()
+    declined_count = Booking.objects.filter(status='declined').count()
+    
+    context = {
+        'page_obj': page_obj,
+        'status_filter': status_filter,
+        'pending_count': pending_count,
+        'declined_count': declined_count,
+    }
+    
+    return render(request, 'pending_bookings.html', context)
+
+@login_required
+@admin_required
+def booking_approve(request, pk):
+    """Approve a pending booking"""
+    booking = get_object_or_404(Booking, pk=pk)
+    
+    if not booking.can_be_approved():
+        messages.error(request, 'This booking cannot be approved.')
+        return redirect('pending_bookings')
+    
+    if request.method == 'POST':
+        booking.status = 'confirmed'
+        booking.approved_at = timezone.now()
+        booking.approved_by = request.user
+        booking.save()
+        
+        # Send confirmation emails to client and salesman
+        try:
+            send_booking_confirmation(booking)
+        except Exception as e:
+            logger.warning(f"Failed to send booking confirmation: {str(e)}")
+        
+        # Send approval notification to remote agent who created it
+        try:
+            send_booking_approved_notification(booking)
+        except Exception as e:
+            logger.warning(f"Failed to send approval notification: {str(e)}")
+        
+        messages.success(
+            request, 
+            f'✓ Booking approved for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
+            f'Confirmation emails sent to all parties.'
+        )
+        
+        # Log the approval
+        from .signals import create_audit_log
+        create_audit_log(
+            user=request.user,
+            action='update',
+            entity_type='Booking',
+            entity_id=booking.id,
+            changes={'status': 'confirmed', 'approved_by': request.user.get_full_name()},
+            request=request
+        )
+        
+        return redirect('pending_bookings')
+    
+    return render(request, 'booking_approve.html', {'booking': booking})
 
 @login_required
 def booking_cancel(request, pk):
@@ -343,40 +457,102 @@ def booking_cancel(request, pk):
     
     return render(request, 'booking_cancel.html', {'form': form, 'booking': booking})
 
+@login_required
+@admin_required
+def booking_decline(request, pk):
+    """Decline a pending booking"""
+    booking = get_object_or_404(Booking, pk=pk)
+    
+    if not booking.can_be_declined():
+        messages.error(request, 'This booking cannot be declined.')
+        return redirect('pending_bookings')
+    
+    if request.method == 'POST':
+        decline_reason = request.POST.get('decline_reason', '').strip()
+        
+        if not decline_reason:
+            messages.error(request, 'Please provide a reason for declining.')
+            return render(request, 'booking_decline.html', {'booking': booking})
+        
+        booking.status = 'declined'
+        booking.declined_at = timezone.now()
+        booking.declined_by = request.user
+        booking.decline_reason = decline_reason
+        booking.save()
+        
+        # Send decline notification to remote agent who created it
+        try:
+            send_booking_declined_notification(booking)
+        except Exception as e:
+            logger.warning(f"Failed to send decline notification: {str(e)}")
+        
+        messages.success(
+            request, 
+            f'✗ Booking declined for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
+            f'Notification sent to {booking.created_by.get_full_name()}.'
+        )
+        
+        # Log the decline
+        from .signals import create_audit_log
+        create_audit_log(
+            user=request.user,
+            action='update',
+            entity_type='Booking',
+            entity_id=booking.id,
+            changes={
+                'status': 'declined', 
+                'declined_by': request.user.get_full_name(),
+                'decline_reason': decline_reason
+            },
+            request=request
+        )
+        
+        return redirect('pending_bookings')
+    
+    return render(request, 'booking_decline.html', {'booking': booking})
+
+
+@login_required
+@admin_required
+def pending_bookings_count_api(request):
+    """API endpoint for pending bookings count (for badge in navbar)"""
+    count = Booking.objects.filter(status='pending').count()
+    return JsonResponse({'count': count})
+
 # ============================================================
 # Commission Views
 # ============================================================
 
 @login_required
-@group_required('sales_support', 'salesman', 'admin')
+@group_required('remote_agent')
 def commissions_view(request):
-    # Get week parameter or use current week
+    """Remote agents view their own commissions"""
     week_offset = int(request.GET.get('week', 0))
     
     current_period = get_current_payroll_period()
     start_date = current_period['start_date'] - timedelta(weeks=week_offset)
     end_date = start_date + timedelta(days=6)
     
-    # For non-admin users, only show their own commissions
-    if request.user.is_staff:
-        user_filter = request.GET.get('user')
-        if user_filter:
-            bookings = Booking.objects.filter(salesman_id=user_filter)
-        else:
-            bookings = Booking.objects.all()
-    else:
-        bookings = Booking.objects.filter(salesman=request.user)
-    
-    # Filter by date range
-    bookings = bookings.filter(
+    # Only show bookings created by this remote agent
+    bookings = Booking.objects.filter(
+        created_by=request.user,
         appointment_date__gte=start_date,
         appointment_date__lte=end_date
     ).select_related('client', 'salesman').order_by('-appointment_date', '-appointment_time')
     
-    # Calculate totals
+    # Calculate totals - only confirmed/completed count
     confirmed_bookings = bookings.filter(status__in=['confirmed', 'completed'])
     total_commission = sum(b.commission_amount for b in confirmed_bookings)
     total_bookings = confirmed_bookings.count()
+    
+    # Count pending bookings separately
+    pending_bookings = bookings.filter(status='pending')
+    pending_count = pending_bookings.count()
+    pending_commission = sum(b.commission_amount for b in pending_bookings)
+    
+    # Count declined bookings
+    declined_bookings = bookings.filter(status='declined')
+    declined_count = declined_bookings.count()
     
     # Check if period is finalized
     payroll_period = PayrollPeriod.objects.filter(
@@ -384,31 +560,23 @@ def commissions_view(request):
         end_date=end_date
     ).first()
     
-    # Get available weeks for dropdown
     available_weeks = get_payroll_periods(12)
-    
-    # Get all users for admin filter
-    users = None
-    if request.user.is_staff:
-        users = User.objects.filter(
-            is_active_salesman=True,
-            is_active=True
-        )
     
     context = {
         'bookings': bookings,
         'total_commission': total_commission,
         'total_bookings': total_bookings,
+        'pending_count': pending_count,
+        'pending_commission': pending_commission,
+        'declined_count': declined_count,
         'start_date': start_date,
         'end_date': end_date,
         'week_offset': week_offset,
         'payroll_period': payroll_period,
         'available_weeks': available_weeks,
-        'users': users,
     }
     
     return render(request, 'commissions.html', context)
-
 # ============================================================
 # Availability Views
 # ============================================================
@@ -824,17 +992,37 @@ def user_create(request):
         form = UserForm(request.POST)
         if form.is_valid():
             try:
-                user = form.save()  # Form handles everything including employee_id
+                # Check if password was provided in form
+                password_from_form = request.POST.get('password')
                 
-                # Only generate temp password if no password was set in form
-                if not request.POST.get('password'):
+                if password_from_form:
+                    # Password provided - form will handle it
+                    user = form.save()
+                    messages.success(request, 'User created successfully!')
+                else:
+                    # No password provided - generate temp password
+                    user = form.save(commit=False)  # Don't save yet
+                    
                     temp_password = get_random_string(length=12)
                     user.set_password(temp_password)
+                    user.plain_text_password = temp_password  # SAVE PLAIN TEXT
+                    
+                    # Now save with the password
                     user.save()
+                    
+                    # Handle groups (since we used commit=False)
+                    user.groups.clear()
+                    for role in form.cleaned_data.get('roles', []):
+                        from django.contrib.auth.models import Group
+                        group, created = Group.objects.get_or_create(name=role)
+                        user.groups.add(group)
+                    
                     logger.info(f"User created: {user.username}, Employee ID: {user.employee_id}, Temp Password: {temp_password}")
-                    messages.success(request, f'User created successfully! Temporary password: {temp_password} (Please save this and share securely with the user)')
-                else:
-                    messages.success(request, 'User created successfully!')
+                    messages.success(
+                        request, 
+                        f'User created successfully! Temporary password: <strong>{temp_password}</strong> '
+                        f'(Please save this and share securely with the user)'
+                    )
                 
                 return redirect('users')
             except Exception as e:
@@ -858,9 +1046,22 @@ def user_edit(request, pk):
     if request.method == 'POST':
         form = UserForm(request.POST, instance=user)
         if form.is_valid():
-            form.save()
-            messages.success(request, 'User updated successfully!')
+            password_from_form = request.POST.get('password')
+            
+            user = form.save()
+            
+            # If password was provided, it's already saved by form
+            # Just show a message
+            if password_from_form:
+                messages.success(request, f'User updated successfully! New password: <strong>{password_from_form}</strong>')
+            else:
+                messages.success(request, 'User updated successfully!')
+            
             return redirect('users')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f'{field}: {error}')
     else:
         form = UserForm(instance=user)
     
@@ -963,69 +1164,128 @@ def audit_log_view(request):
 
 # ============================================================
 @login_required
-@admin_required
+@group_required('salesman', 'admin')
 def timeslots_view(request):
-    """View all available time slots"""
-    salesman_filter = request.GET.get('salesman')
+    """View available time slots - Admin sees all, Salesman sees only their own"""
+    is_admin = request.user.is_staff
     
-    timeslots = AvailableTimeSlot.objects.select_related('salesman', 'created_by').order_by('salesman', 'day_of_week', 'start_time')
+    # Admin can filter by salesman, salesmen only see their own
+    if is_admin:
+        salesman_filter = request.GET.get('salesman')
+        if salesman_filter:
+            timeslots = AvailableTimeSlot.objects.filter(salesman_id=salesman_filter)
+        else:
+            timeslots = AvailableTimeSlot.objects.all()
+    else:
+        # Salesman only sees their own slots
+        timeslots = AvailableTimeSlot.objects.filter(salesman=request.user)
     
-    if salesman_filter:
-        timeslots = timeslots.filter(salesman_id=salesman_filter)
+    timeslots = timeslots.select_related('salesman', 'created_by').order_by('salesman', 'day_of_week', 'start_time')
     
-    salesmen = User.objects.filter(is_active_salesman=True, is_active=True)
+    # Get salesmen list (for admin filter dropdown)
+    salesmen = None
+    if is_admin:
+        salesmen = User.objects.filter(is_active_salesman=True, is_active=True)
     
     context = {
         'timeslots': timeslots,
         'salesmen': salesmen,
-        'selected_salesman': salesman_filter,
+        'selected_salesman': request.GET.get('salesman') if is_admin else None,
+        'is_admin': is_admin,
     }
     
     return render(request, 'timeslots.html', context)
 
+
 @login_required
-@admin_required
+@group_required('salesman', 'admin')
 def timeslot_create(request):
-    """Create new time slot"""
+    """Create new time slot - Admin can create for anyone, Salesman for themselves"""
+    is_admin = request.user.is_staff
+    
     if request.method == 'POST':
-        form = AvailableTimeSlotForm(request.POST)
+        form = AvailableTimeSlotForm(request.POST, is_admin=is_admin, current_user=request.user)
         if form.is_valid():
             timeslot = form.save(commit=False)
             timeslot.created_by = request.user
+            
+            # If not admin, force salesman to be current user
+            if not is_admin:
+                timeslot.salesman = request.user
+            
             timeslot.save()
             messages.success(request, 'Time slot created successfully!')
             return redirect('timeslots')
     else:
-        form = AvailableTimeSlotForm()
+        # Pre-fill salesman field for non-admin users
+        initial = {}
+        if not is_admin:
+            initial['salesman'] = request.user
+        elif request.GET.get('salesman'):
+            initial['salesman'] = request.GET.get('salesman')
+        
+        form = AvailableTimeSlotForm(initial=initial, is_admin=is_admin, current_user=request.user)
     
-    return render(request, 'timeslot_form.html', {'form': form, 'title': 'Create Time Slot'})
+    return render(request, 'timeslot_form.html', {
+        'form': form, 
+        'title': 'Create Time Slot',
+        'is_admin': is_admin
+    })
+
 
 @login_required
-@admin_required
+@group_required('salesman', 'admin')
 def timeslot_edit(request, pk):
-    """Edit existing time slot"""
+    """Edit existing time slot - Admin can edit any, Salesman only their own"""
     timeslot = get_object_or_404(AvailableTimeSlot, pk=pk)
+    is_admin = request.user.is_staff
+    
+    # Check permissions - salesmen can only edit their own slots
+    if not is_admin and timeslot.salesman != request.user:
+        messages.error(request, "You don't have permission to edit this time slot.")
+        return redirect('timeslots')
     
     if request.method == 'POST':
-        form = AvailableTimeSlotForm(request.POST, instance=timeslot)
+        form = AvailableTimeSlotForm(request.POST, instance=timeslot, is_admin=is_admin, current_user=request.user)
         if form.is_valid():
-            form.save()
+            timeslot = form.save()
+            
+            # Prevent salesman from changing the salesman field
+            if not is_admin and timeslot.salesman != request.user:
+                timeslot.salesman = request.user
+                timeslot.save()
+            
             messages.success(request, 'Time slot updated successfully!')
             return redirect('timeslots')
     else:
-        form = AvailableTimeSlotForm(instance=timeslot)
+        form = AvailableTimeSlotForm(instance=timeslot, is_admin=is_admin, current_user=request.user)
     
-    return render(request, 'timeslot_form.html', {'form': form, 'title': 'Edit Time Slot', 'timeslot': timeslot})
+    return render(request, 'timeslot_form.html', {
+        'form': form, 
+        'title': 'Edit Time Slot', 
+        'timeslot': timeslot,
+        'is_admin': is_admin
+    })
+
 
 @login_required
-@admin_required
+@group_required('salesman', 'admin')
 def timeslot_delete(request, pk):
-    """Delete time slot"""
+    """Delete time slot - Admin can delete any, Salesman only their own"""
     timeslot = get_object_or_404(AvailableTimeSlot, pk=pk)
+    is_admin = request.user.is_staff
+    
+    # Check permissions
+    if not is_admin and timeslot.salesman != request.user:
+        messages.error(request, "You don't have permission to delete this time slot.")
+        return redirect('timeslots')
     
     if request.method == 'POST':
         timeslot.delete()
         messages.success(request, 'Time slot deleted successfully!')
         return redirect('timeslots')
     
-    return render(request, 'timeslot_delete.html', {'timeslot': timeslot})
+    return render(request, 'timeslot_delete.html', {
+        'timeslot': timeslot,
+        'is_admin': is_admin
+    })

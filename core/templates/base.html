@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}CSASS{% endblock %}</title>
     {% load static %}
+    {% load auth_extras %}
 
     <link rel="icon" href="{% static 'favicon.ico' %}" type="image/x-icon">
 
@@ -29,26 +30,35 @@
                             <i class="bi bi-calendar3"></i> Calendar
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.resolver_match.url_name == 'commissions' %}active{% endif %}" 
-                           href="{% url 'commissions' %}">
-                            <i class="bi bi-currency-dollar"></i> My Commissions
-                        </a>
-                    </li>
-                    {% if user.is_active_salesman or user.is_staff %}
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.resolver_match.url_name == 'availability' %}active{% endif %}" 
-                           href="{% url 'availability' %}">
-                            <i class="bi bi-clock"></i> Manage Availability
-                        </a>
-                    </li>
+                    {% if user|has_group:'remote_agent' %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.resolver_match.url_name == 'commissions' %}active{% endif %}" 
+                            href="{% url 'commissions' %}">
+                                <i class="bi bi-currency-dollar"></i> My Commissions
+                            </a>
+                        </li>
                     {% endif %}
+
+                    {% if user|has_group:'salesman' or user.is_staff %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.resolver_match.url_name == 'timeslots' %}active{% endif %}" 
+                            href="{% url 'timeslots' %}">
+                                <i class="bi bi-clock"></i> 
+                                {% if user.is_staff %}Time Slots{% else %}My Availability{% endif %}
+                            </a>
+                        </li>
+                    {% endif %}
+
                     {% if user.is_staff %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-gear"></i> Admin
                         </a>
                         <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{% url 'pending_bookings' %}">
+                                <i class="bi bi-hourglass-split"></i> Pending Approvals
+                                <span class="badge bg-danger ms-2" id="pending-count"></span>
+                            </a></li>
                             <li><a class="dropdown-item" href="{% url 'payroll' %}">
                                 <i class="bi bi-cash-stack"></i> Payroll Processing
                             </a></li>
@@ -63,6 +73,7 @@
                             </a></li>
                             <li><a class="dropdown-item" href="{% url 'audit_log' %}">
                                 <i class="bi bi-journal-text"></i> Audit Log
+                            </a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{% url 'logout' %}">
                                 <i class="bi bi-box-arrow-right"></i> Logout
@@ -81,9 +92,7 @@
                             <span class="ms-2">{{ user.first_name }}</span>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                    
                             <li><hr class="dropdown-divider"></li>
-                            </a></li>
                             <li><a class="dropdown-item" href="{% url 'password_change' %}">
                             <i class="bi bi-key"></i> Change Password
                             </a></li>

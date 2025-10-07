@@ -150,18 +150,56 @@ def check_booking_conflicts(salesman, appointment_date, appointment_time, durati
     
     return False, None
 
-def check_unavailability_conflicts(salesman, appointment_date, appointment_time, duration_minutes):
-    """Check if booking conflicts with unavailability"""
-    from .models import Unavailability
-    
-    unavailable = Unavailability.objects.filter(
-        salesman=salesman,
-        start_date__lte=appointment_date,
-        end_date__gte=appointment_date
-    )
-    
-    for block in unavailable:
-        if block.start_time <= appointment_time < block.end_time:
-            return True, block
-    
-    return False, None
+
+def send_booking_declined_notification(booking):
+    """
+    Send email notification when booking is declined by admin
+    """
+    # Email to remote agent who created the booking
+    if booking.created_by.groups.filter(name='remote_agent').exists():
+        subject = f'Booking Declined - {booking.client.get_full_name()}'
+        
+        context = {
+            'booking': booking,
+            'agent': booking.created_by,
+            'admin': booking.declined_by,
+        }
+        
+        message = render_to_string('emails/booking_declined.txt', context)
+        html_message = render_to_string('emails/booking_declined.html', context)
+        
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[booking.created_by.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+
+
+def send_booking_approved_notification(booking):
+    """
+    Send email notification when booking is approved by admin
+    Notify the remote agent that their booking was approved
+    """
+    if booking.created_by.groups.filter(name='remote_agent').exists():
+        subject = f'Booking Approved - {booking.client.get_full_name()}'
+        
+        context = {
+            'booking': booking,
+            'agent': booking.created_by,
+            'admin': booking.approved_by,
+        }
+        
+        message = render_to_string('emails/booking_approved.txt', context)
+        html_message = render_to_string('emails/booking_approved.html', context)
+        
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[booking.created_by.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
