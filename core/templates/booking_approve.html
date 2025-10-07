@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-
+{% load auth_extras %}
 {% block title %}Approve Booking - CSASS{% endblock %}
 
 {% block content %}
@@ -52,8 +52,8 @@
                     <div class="mb-3">
                         <strong>Submitted By:</strong><br>
                         {{ booking.created_by.get_full_name }}
-                        {% if booking.created_by.groups.filter.name='remote_agent' %}
-                        <span class="badge bg-info text-dark">Remote Agent</span>
+                        {% if booking.created_by|has_group:'remote_agent' %}
+                            <span class="badge bg-info text-dark">Remote Agent</span>
                         {% endif %}
                     </div>
 
