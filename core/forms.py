@@ -358,10 +358,10 @@ class BookingForm(forms.ModelForm):
         
         if all([salesman, appointment_date, appointment_time, appointment_type]):
             # Get available slots for this day and appointment type
-            day_of_week = appointment_date.weekday()
+            date = appointment_date.date()
             available_slots = AvailableTimeSlot.objects.filter(
                 salesman=salesman,
-                day_of_week=day_of_week,
+                date=date,
                 appointment_type=appointment_type,  # Must match!
                 is_active=True
             )
@@ -515,10 +515,10 @@ class SystemConfigForm(forms.ModelForm):
 class AvailableTimeSlotForm(forms.ModelForm):
     class Meta:
         model = AvailableTimeSlot
-        fields = ['salesman', 'day_of_week', 'start_time', 'end_time', 'appointment_type', 'is_active']
+        fields = ['salesman', 'date', 'start_time', 'end_time', 'appointment_type', 'is_active']
         widgets = {
             'salesman': forms.Select(attrs={'class': 'form-control'}),
-            'day_of_week': forms.Select(attrs={'class': 'form-control'}),
+            'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'start_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
             'end_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
             'appointment_type': forms.Select(attrs={'class': 'form-control'}),
@@ -552,7 +552,7 @@ class AvailableTimeSlotForm(forms.ModelForm):
         start_time = cleaned_data.get('start_time')
         end_time = cleaned_data.get('end_time')
         salesman = cleaned_data.get('salesman')
-        day_of_week = cleaned_data.get('day_of_week')
+        date = cleaned_data.get('date')
         appointment_type = cleaned_data.get('appointment_type')
         
         # Validate time range
@@ -561,10 +561,10 @@ class AvailableTimeSlotForm(forms.ModelForm):
                 raise forms.ValidationError("End time must be after start time")
         
         # Check for overlapping slots for the same salesman, day, and type
-        if salesman and day_of_week is not None and start_time and end_time and appointment_type:
+        if salesman and date is not None and start_time and end_time and appointment_type:
             overlapping = AvailableTimeSlot.objects.filter(
                 salesman=salesman,
-                day_of_week=day_of_week,
+                date=date,
                 appointment_type=appointment_type,
                 is_active=True
             )

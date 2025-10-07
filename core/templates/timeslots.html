@@ -47,7 +47,7 @@
                     <thead class="table-light">
                         <tr>
                             {% if is_admin %}<th>Salesman</th>{% endif %}
-                            <th>Day of Week</th>
+                            <th>Date</th>
                             <th>Time Range</th>
                             <th>Type</th>
                             <th>Status</th>
@@ -62,7 +62,7 @@
                             <td><strong>{{ slot.salesman.get_full_name }}</strong></td>
                             {% endif %}
                             <td>
-                                <span class="badge bg-secondary">{{ slot.get_day_of_week_display }}</span>
+                                <span class="badge bg-secondary">{{ slot.date|date:"D, M d" }}</span>
                             </td>
                             <td>
                                 {{ slot.start_time|time:"g:i A" }} - {{ slot.end_time|time:"g:i A" }}

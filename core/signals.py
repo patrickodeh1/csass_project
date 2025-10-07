@@ -1,5 +1,3 @@
-# signals.py - FIXED VERSION
-
 from django.db.models.signals import post_save, post_delete
 from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import receiver
@@ -93,7 +91,7 @@ def log_available_time_slot_changes(sender, instance, created, **kwargs):
     if created:
         changes = {
             'salesman': instance.salesman.get_full_name(),
-            'day_of_week': instance.get_day_of_week_display(),
+            'date': str(instance.date),
             'start_time': str(instance.start_time),
             'end_time': str(instance.end_time),
             'appointment_type': instance.get_appointment_type_display(),

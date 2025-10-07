@@ -195,14 +195,22 @@ def calendar_view(request):
         
         # Generate calendar grid for month view
         calendar_weeks = monthcalendar(current_date.year, current_date.month)
+        week_days = None
         
     elif view_mode == 'week':
         start_date = current_date - timedelta(days=current_date.weekday())
         end_date = start_date + timedelta(days=6)
         calendar_weeks = None
+        
+        # Generate week_days list for template
+        week_days = []
+        for i in range(7):
+            day_date = start_date + timedelta(days=i)
+            week_days.append({'date': day_date})
     else:  # day
         start_date = end_date = current_date
         calendar_weeks = None
+        week_days = None
     
     # Build query
     bookings = Booking.objects.filter(
@@ -216,14 +224,59 @@ def calendar_view(request):
     if appointment_type:
         bookings = bookings.filter(appointment_type=appointment_type)
     
+    # Get available time slots
     timeslots = AvailableTimeSlot.objects.filter(
-        is_active=True
+        is_active=True,
+        date__gte=start_date,
+        date__lte=end_date
     ).select_related('salesman')
-    
     
     if salesman_id:
         timeslots = timeslots.filter(salesman_id=salesman_id)
+    
+    if appointment_type:
+        timeslots = timeslots.filter(appointment_type=appointment_type)
+    
+    # Generate available slots for date range with specific dates
+    # KEY FIX: Use string keys for consistent comparison in template
+    available_slots_by_date = {}
+    
+    for slot in timeslots:
+        date = slot.date
+        date_key = date.strftime('%Y-%m-%d')  # Convert to string key
         
+        # Generate time slots within this availability window
+        slot_start = datetime.combine(date, slot.start_time)
+        slot_end = datetime.combine(date, slot.end_time)
+        
+        # Generate 30-minute intervals
+        current_time = slot_start
+        while current_time < slot_end:
+            # Check if this slot is already booked
+            is_booked = bookings.filter(
+                salesman=slot.salesman,
+                appointment_date=date,
+                appointment_time=current_time.time(),
+                status__in=['pending', 'confirmed', 'completed']
+            ).exists()
+            
+            if not is_booked:
+                if date_key not in available_slots_by_date:
+                    available_slots_by_date[date_key] = []
+                
+                # Create a simple object to hold slot data
+                class SlotData:
+                    def __init__(self, date, time, salesman, appointment_type):
+                        self.date = date
+                        self.time = time
+                        self.salesman = salesman
+                        self.appointment_type = appointment_type
+                
+                slot_obj = SlotData(date, current_time.time(), slot.salesman, slot.appointment_type)
+                available_slots_by_date[date_key].append(slot_obj)
+            
+            current_time += timedelta(minutes=30)
+    
     # Get holidays
     holidays = CompanyHoliday.objects.filter(
         date__gte=start_date,
@@ -239,6 +292,7 @@ def calendar_view(request):
     context = {
         'bookings': bookings,
         'timeslots': timeslots,
+        'available_slots_by_date': available_slots_by_date,
         'holidays': holidays,
         'salesmen': salesmen,
         'current_date': current_date,
@@ -247,11 +301,140 @@ def calendar_view(request):
         'view_mode': view_mode,
         'selected_salesman': salesman_id,
         'selected_type': appointment_type,
-        'calendar_weeks': calendar_weeks,  # ADD THIS
+        'calendar_weeks': calendar_weeks,
+        'week_days': week_days,  # Add this for week view
     }
     
     return render(request, 'calendar.html', context)
-
+@login_required
+def calendar_view(request):
+    # Get filter parameters
+    salesman_id = request.GET.get('salesman')
+    appointment_type = request.GET.get('type')
+    view_mode = request.GET.get('view', 'month')
+    date_str = request.GET.get('date')
+    
+    # Parse date or use current
+    if date_str:
+        try:
+            current_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            current_date = timezone.now().date()
+    else:
+        current_date = timezone.now().date()
+    
+    # Calculate date range based on view mode
+    if view_mode == 'month':
+        start_date = current_date.replace(day=1)
+        if current_date.month == 12:
+            end_date = current_date.replace(year=current_date.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            end_date = current_date.replace(month=current_date.month + 1, day=1) - timedelta(days=1)
+        
+        # Generate calendar grid for month view
+        calendar_weeks = monthcalendar(current_date.year, current_date.month)
+        week_days = None
+        
+    elif view_mode == 'week':
+        start_date = current_date - timedelta(days=current_date.weekday())
+        end_date = start_date + timedelta(days=6)
+        calendar_weeks = None
+        
+        # Generate week_days list for template
+        week_days = []
+        for i in range(7):
+            day_date = start_date + timedelta(days=i)
+            week_days.append({'date': day_date})
+    else:  # day
+        start_date = end_date = current_date
+        calendar_weeks = None
+        week_days = None
+    
+    # Build query for bookings
+    bookings = Booking.objects.filter(
+        appointment_date__gte=start_date,
+        appointment_date__lte=end_date
+    ).select_related('client', 'salesman')
+    
+    if salesman_id:
+        bookings = bookings.filter(salesman_id=salesman_id)
+    
+    if appointment_type:
+        bookings = bookings.filter(appointment_type=appointment_type)
+    
+    # Get available time slots
+    timeslots = AvailableTimeSlot.objects.filter(
+        is_active=True,
+        date__gte=start_date,
+        date__lte=end_date
+    ).select_related('salesman')
+    
+    if salesman_id:
+        timeslots = timeslots.filter(salesman_id=salesman_id)
+    
+    if appointment_type:
+        timeslots = timeslots.filter(appointment_type=appointment_type)
+    
+    # Organize available slots by date
+    available_slots_by_date = {}
+    for slot in timeslots:
+        date = slot.date
+        date_key = date.strftime('%Y-%m-%d')  # Convert to string key for template consistency
+        
+        # Check if this slot is already booked
+        is_booked = bookings.filter(
+            salesman=slot.salesman,
+            appointment_date=date,
+            appointment_time=slot.start_time,
+            status__in=['pending', 'confirmed', 'completed']
+        ).exists()
+        
+        if not is_booked:
+            if date_key not in available_slots_by_date:
+                available_slots_by_date[date_key] = []
+            
+            # Create a simple object to hold slot data
+            class SlotData:
+                def __init__(self, date, time, salesman, appointment_type):
+                    self.date = date
+                    self.time = time
+                    self.salesman = salesman
+                    self.appointment_type = appointment_type
+            
+            slot_obj = SlotData(date, slot.start_time, slot.salesman, slot.appointment_type)
+            available_slots_by_date[date_key].append(slot_obj)
+    
+    # Get holidays
+    holidays = CompanyHoliday.objects.filter(
+        date__gte=start_date,
+        date__lte=end_date
+    )
+    
+    # Get all salesmen for filter
+    salesmen = User.objects.filter(
+        is_active_salesman=True,
+        is_active=True
+    )
+    
+    # Prepare context for template
+    context = {
+        'bookings': bookings,
+        'timeslots': timeslots,
+        'available_slots_by_date': available_slots_by_date,
+        'holidays': holidays,
+        'salesmen': salesmen,
+        'current_date': current_date,
+        'start_date': start_date,
+        'end_date': end_date,
+        'view_mode': view_mode,
+        'selected_salesman': salesman_id,
+        'selected_type': appointment_type,
+        'calendar_weeks': calendar_weeks,
+        'week_days': week_days,
+    }
+    
+    return render(request, 'calendar.html', context)
+    
 @login_required
 def booking_create(request):
     if request.method == 'POST':
@@ -282,7 +465,7 @@ def booking_create(request):
             
             return redirect('calendar')
     else:
-        # Pre-fill date and time from URL params
+        # Pre-fill from URL params (clicked time slot)
         initial = {}
         if request.GET.get('date'):
             initial['appointment_date'] = request.GET.get('date')
@@ -290,11 +473,15 @@ def booking_create(request):
             initial['appointment_time'] = request.GET.get('time')
         if request.GET.get('salesman'):
             initial['salesman'] = request.GET.get('salesman')
+        if request.GET.get('type'):
+            initial['appointment_type'] = request.GET.get('type')
+        
+        # Set default duration
+        initial['duration_minutes'] = 60
         
         form = BookingForm(initial=initial, request=request)
     
     return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
-
 
 @login_required
 def booking_detail(request, pk):
@@ -1180,7 +1367,7 @@ def timeslots_view(request):
         # Salesman only sees their own slots
         timeslots = AvailableTimeSlot.objects.filter(salesman=request.user)
     
-    timeslots = timeslots.select_related('salesman', 'created_by').order_by('salesman', 'day_of_week', 'start_time')
+    timeslots = timeslots.select_related('salesman', 'created_by').order_by('salesman', 'date', 'start_time')
     
     # Get salesmen list (for admin filter dropdown)
     salesmen = None

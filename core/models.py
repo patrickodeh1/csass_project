@@ -139,9 +139,9 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def get_available_slots_for_date(self, date):
         """Get available time slots for a specific date"""
-        day_of_week = date.weekday()
+        date = date.date()
         return self.available_timeslots.filter(
-            day_of_week=day_of_week,
+            date=date,
             is_active=True
         ).order_by('start_time')
 
@@ -278,11 +278,14 @@ class Booking(models.Model):
         return self.status in ['confirmed', 'completed']
     
     def save(self, *args, **kwargs):
-       
         # Set commission amount if not set
         if not self.commission_amount:
             if self.created_by and self.created_by.groups.filter(name='remote_agent').exists():
-                self.commission_amount = Decimal('50.00')  # Both Zoom and In-Person
+                # Remote agents: $30 for Zoom, $50 for In-Person
+                if self.appointment_type == 'zoom':
+                    self.commission_amount = Decimal('30.00')
+                else:  # in_person
+                    self.commission_amount = Decimal('50.00')
             else:
                 self.commission_amount = Decimal('0.00') 
         
@@ -447,17 +450,7 @@ class AvailableTimeSlot(models.Model):
     ]
     
     salesman = models.ForeignKey(User, on_delete=models.CASCADE, related_name='available_timeslots')
-    day_of_week = models.IntegerField(
-        choices=[
-            (0, 'Monday'),
-            (1, 'Tuesday'),
-            (2, 'Wednesday'),
-            (3, 'Thursday'),
-            (4, 'Friday'),
-            (5, 'Saturday'),
-            (6, 'Sunday'),
-        ]
-    )
+    date = models.DateField(null=True)
     start_time = models.TimeField()
     end_time = models.TimeField()
     appointment_type = models.CharField(
@@ -470,13 +463,13 @@ class AvailableTimeSlot(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='timeslots_created')
     
     class Meta:
-        ordering = ['salesman', 'day_of_week', 'start_time']
+        ordering = ['salesman', 'date', 'start_time']
         indexes = [
-            models.Index(fields=['salesman', 'day_of_week', 'appointment_type', 'is_active']),
+            models.Index(fields=['salesman', 'date', 'appointment_type', 'is_active']),
         ]
     
     def __str__(self):
-        return f"{self.salesman.get_full_name()} - {self.get_day_of_week_display()} {self.start_time}-{self.end_time} ({self.get_appointment_type_display()})"
+        return f"{self.salesman.get_full_name()} - {self.date.strftime('%b %d, %Y')} {self.start_time}-{self.end_time} ({self.get_appointment_type_display()})"
     
     def is_time_in_slot(self, time_obj):
         """Check if a given time falls within this slot"""
