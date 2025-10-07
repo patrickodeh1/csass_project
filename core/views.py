@@ -167,148 +167,11 @@ def password_change_view(request):
 # ============================================================
 # Calendar & Booking Views
 # ============================================================
-
 @login_required
 def calendar_view(request):
-    # Get filter parameters
-    salesman_id = request.GET.get('salesman')
-    appointment_type = request.GET.get('type')
-    view_mode = request.GET.get('view', 'month')
-    date_str = request.GET.get('date')
+    """Fixed calendar view with proper weekday matching and organized data"""
+    from datetime import date as date_class
     
-    # Parse date or use current
-    if date_str:
-        try:
-            current_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        except:
-            current_date = timezone.now().date()
-    else:
-        current_date = timezone.now().date()
-    
-    # Calculate date range based on view mode
-    if view_mode == 'month':
-        start_date = current_date.replace(day=1)
-        if current_date.month == 12:
-            end_date = current_date.replace(year=current_date.year + 1, month=1, day=1) - timedelta(days=1)
-        else:
-            end_date = current_date.replace(month=current_date.month + 1, day=1) - timedelta(days=1)
-        
-        # Generate calendar grid for month view
-        calendar_weeks = monthcalendar(current_date.year, current_date.month)
-        week_days = None
-        
-    elif view_mode == 'week':
-        start_date = current_date - timedelta(days=current_date.weekday())
-        end_date = start_date + timedelta(days=6)
-        calendar_weeks = None
-        
-        # Generate week_days list for template
-        week_days = []
-        for i in range(7):
-            day_date = start_date + timedelta(days=i)
-            week_days.append({'date': day_date})
-    else:  # day
-        start_date = end_date = current_date
-        calendar_weeks = None
-        week_days = None
-    
-    # Build query
-    bookings = Booking.objects.filter(
-        appointment_date__gte=start_date,
-        appointment_date__lte=end_date
-    ).select_related('client', 'salesman')
-    
-    if salesman_id:
-        bookings = bookings.filter(salesman_id=salesman_id)
-    
-    if appointment_type:
-        bookings = bookings.filter(appointment_type=appointment_type)
-    
-    # Get available time slots
-    timeslots = AvailableTimeSlot.objects.filter(
-        is_active=True,
-        date__gte=start_date,
-        date__lte=end_date
-    ).select_related('salesman')
-    
-    if salesman_id:
-        timeslots = timeslots.filter(salesman_id=salesman_id)
-    
-    if appointment_type:
-        timeslots = timeslots.filter(appointment_type=appointment_type)
-    
-    # Generate available slots for date range with specific dates
-    # KEY FIX: Use string keys for consistent comparison in template
-    available_slots_by_date = {}
-    
-    for slot in timeslots:
-        date = slot.date
-        date_key = date.strftime('%Y-%m-%d')  # Convert to string key
-        
-        # Generate time slots within this availability window
-        slot_start = datetime.combine(date, slot.start_time)
-        slot_end = datetime.combine(date, slot.end_time)
-        
-        # Generate 30-minute intervals
-        current_time = slot_start
-        while current_time < slot_end:
-            # Check if this slot is already booked
-            is_booked = bookings.filter(
-                salesman=slot.salesman,
-                appointment_date=date,
-                appointment_time=current_time.time(),
-                status__in=['pending', 'confirmed', 'completed']
-            ).exists()
-            
-            if not is_booked:
-                if date_key not in available_slots_by_date:
-                    available_slots_by_date[date_key] = []
-                
-                # Create a simple object to hold slot data
-                class SlotData:
-                    def __init__(self, date, time, salesman, appointment_type):
-                        self.date = date
-                        self.time = time
-                        self.salesman = salesman
-                        self.appointment_type = appointment_type
-                
-                slot_obj = SlotData(date, current_time.time(), slot.salesman, slot.appointment_type)
-                available_slots_by_date[date_key].append(slot_obj)
-            
-            current_time += timedelta(minutes=30)
-    
-    # Get holidays
-    holidays = CompanyHoliday.objects.filter(
-        date__gte=start_date,
-        date__lte=end_date
-    )
-    
-    # Get all salesmen for filter
-    salesmen = User.objects.filter(
-        is_active_salesman=True,
-        is_active=True
-    )
-    
-    context = {
-        'bookings': bookings,
-        'timeslots': timeslots,
-        'available_slots_by_date': available_slots_by_date,
-        'holidays': holidays,
-        'salesmen': salesmen,
-        'current_date': current_date,
-        'start_date': start_date,
-        'end_date': end_date,
-        'view_mode': view_mode,
-        'selected_salesman': salesman_id,
-        'selected_type': appointment_type,
-        'calendar_weeks': calendar_weeks,
-        'week_days': week_days,  # Add this for week view
-    }
-    
-    return render(request, 'calendar.html', context)
-    
-@login_required
-def calendar_view(request):
     # Get filter parameters
     salesman_id = request.GET.get('salesman')
     appointment_type = request.GET.get('type')
@@ -332,24 +195,84 @@ def calendar_view(request):
         else:
             end_date = current_date.replace(month=current_date.month + 1, day=1) - timedelta(days=1)
         
-        # Generate calendar grid for month view
-        calendar_weeks = monthcalendar(current_date.year, current_date.month)
+        # Calculate navigation dates
+        if current_date.month == 1:
+            prev_month = current_date.replace(year=current_date.year - 1, month=12, day=1)
+        else:
+            prev_month = current_date.replace(month=current_date.month - 1, day=1)
+        
+        if current_date.month == 12:
+            next_month = current_date.replace(year=current_date.year + 1, month=1, day=1)
+        else:
+            next_month = current_date.replace(month=current_date.month + 1, day=1)
+        
+        # Generate proper calendar grid with weekday matching
+        import calendar
+        cal = calendar.monthcalendar(current_date.year, current_date.month)
+        
+        calendar_weeks = []
+        for week in cal:
+            week_data = []
+            for day in week:
+                if day == 0:
+                    # Empty cell for days from other months
+                    week_data.append({
+                        'day': 0,
+                        'is_current_month': False,
+                        'available_slots': [],
+                        'pending_bookings': [],
+                        'confirmed_bookings': [],
+                        'declined_bookings': [],
+                    })
+                else:
+                    # Create proper date for this day
+                    day_date = date_class(current_date.year, current_date.month, day)
+                    week_data.append({
+                        'day': day,
+                        'date': day_date,
+                        'is_current_month': True,
+                        'available_slots': [],
+                        'pending_bookings': [],
+                        'confirmed_bookings': [],
+                        'declined_bookings': [],
+                    })
+            calendar_weeks.append(week_data)
+        
         week_days = None
+        prev_date = None
+        next_date = None
         
     elif view_mode == 'week':
-        start_date = current_date - timedelta(days=current_date.weekday())
+        # Start week on Sunday (0 = Monday in Python, 6 = Sunday)
+        days_since_sunday = (current_date.weekday() + 1) % 7
+        start_date = current_date - timedelta(days=days_since_sunday)
         end_date = start_date + timedelta(days=6)
-        calendar_weeks = None
         
-        # Generate week_days list for template
+        calendar_weeks = None
+        prev_month = None
+        next_month = None
+        prev_date = start_date - timedelta(days=7)
+        next_date = end_date + timedelta(days=1)
+        
+        # Generate week_days list
         week_days = []
         for i in range(7):
             day_date = start_date + timedelta(days=i)
-            week_days.append({'date': day_date})
+            week_days.append({
+                'date': day_date,
+                'available_slots': [],
+                'pending_bookings': [],
+                'confirmed_bookings': [],
+                'declined_bookings': [],
+            })
     else:  # day
         start_date = end_date = current_date
         calendar_weeks = None
         week_days = None
+        prev_month = None
+        next_month = None
+        prev_date = current_date - timedelta(days=1)
+        next_date = current_date + timedelta(days=1)
     
     # Build query for bookings - include all statuses
     bookings = Booking.objects.filter(
@@ -363,7 +286,7 @@ def calendar_view(request):
     if appointment_type:
         bookings = bookings.filter(appointment_type=appointment_type)
     
-    # Get available time slots (unbooked slots)
+    # Get available time slots
     timeslots = AvailableTimeSlot.objects.filter(
         is_active=True,
         date__gte=start_date,
@@ -376,39 +299,84 @@ def calendar_view(request):
     if appointment_type:
         timeslots = timeslots.filter(appointment_type=appointment_type)
     
-    # Organize available slots by date (green - available)
-    available_slots_by_date = {}
+    # Organize available slots by date
+    class SlotData:
+        def __init__(self, date, time, salesman, appointment_type):
+            self.date = date
+            self.time = time
+            self.salesman = salesman
+            self.appointment_type = appointment_type
+    
+    available_slots_dict = {}
     for slot in timeslots:
-        date = slot.date
-        date_key = date.strftime('%Y-%m-%d')
+        date_key = slot.date
         
-        # Check if this exact slot is booked
+        # Check if this slot is already booked
         is_booked = bookings.filter(
             salesman=slot.salesman,
-            appointment_date=date,
-            appointment_time=slot.start_time
+            appointment_date=slot.date,
+            appointment_time=slot.start_time,
+            status__in=['pending', 'confirmed', 'completed']
         ).exists()
         
         if not is_booked:
-            if date_key not in available_slots_by_date:
-                available_slots_by_date[date_key] = []
+            if date_key not in available_slots_dict:
+                available_slots_dict[date_key] = []
             
-            class SlotData:
-                def __init__(self, date, time, salesman, appointment_type, status='available'):
-                    self.date = date
-                    self.time = time
-                    self.salesman = salesman
-                    self.appointment_type = appointment_type
-                    self.status = status
-            
-            slot_obj = SlotData(date, slot.start_time, slot.salesman, slot.appointment_type)
-            available_slots_by_date[date_key].append(slot_obj)
+            slot_obj = SlotData(slot.date, slot.start_time, slot.salesman, slot.appointment_type)
+            available_slots_dict[date_key].append(slot_obj)
     
-    # Get pending bookings (ash - pending, typically from remote agents)
-    pending_bookings = bookings.filter(status='pending').select_related('created_by')
+    # Organize bookings by status and date
+    pending_bookings_dict = {}
+    confirmed_bookings_dict = {}
+    declined_bookings_dict = {}
     
-    # Get confirmed bookings (blue - confirmed)
-    confirmed_bookings = bookings.filter(status__in=['confirmed', 'completed']).select_related('created_by')
+    for booking in bookings:
+        date_key = booking.appointment_date
+        
+        if booking.status == 'pending':
+            if date_key not in pending_bookings_dict:
+                pending_bookings_dict[date_key] = []
+            pending_bookings_dict[date_key].append(booking)
+        elif booking.status in ['confirmed', 'completed']:
+            if date_key not in confirmed_bookings_dict:
+                confirmed_bookings_dict[date_key] = []
+            confirmed_bookings_dict[date_key].append(booking)
+        elif booking.status == 'declined':
+            if date_key not in declined_bookings_dict:
+                declined_bookings_dict[date_key] = []
+            declined_bookings_dict[date_key].append(booking)
+    
+    # Attach data to calendar structure
+    if view_mode == 'month':
+        for week in calendar_weeks:
+            for day_info in week:
+                if day_info['is_current_month']:
+                    day_date = day_info['date']
+                    day_info['available_slots'] = available_slots_dict.get(day_date, [])
+                    day_info['pending_bookings'] = pending_bookings_dict.get(day_date, [])
+                    day_info['confirmed_bookings'] = confirmed_bookings_dict.get(day_date, [])
+                    day_info['declined_bookings'] = declined_bookings_dict.get(day_date, [])
+    
+    elif view_mode == 'week':
+        for day_info in week_days:
+            day_date = day_info['date']
+            day_info['available_slots'] = available_slots_dict.get(day_date, [])
+            day_info['pending_bookings'] = pending_bookings_dict.get(day_date, [])
+            day_info['confirmed_bookings'] = confirmed_bookings_dict.get(day_date, [])
+            day_info['declined_bookings'] = declined_bookings_dict.get(day_date, [])
+    
+    # Day view - prepare separate lists
+    day_available_slots = None
+    day_pending_bookings = None
+    day_confirmed_bookings = None
+    day_declined_bookings = None
+    
+    if view_mode == 'day':
+        day_available_slots = available_slots_dict.get(current_date, [])
+        day_pending_bookings = pending_bookings_dict.get(current_date, [])
+        day_confirmed_bookings = confirmed_bookings_dict.get(current_date, [])
+        day_declined_bookings = declined_bookings_dict.get(current_date, [])
     
     # Get holidays
     holidays = CompanyHoliday.objects.filter(
@@ -422,11 +390,7 @@ def calendar_view(request):
         is_active=True
     )
     
-    # Prepare context for template
     context = {
-        'available_slots_by_date': available_slots_by_date,  # Green - available
-        'pending_bookings': pending_bookings,  # Ash - pending (remote agent bookings)
-        'confirmed_bookings': confirmed_bookings,  # Blue - confirmed
         'holidays': holidays,
         'salesmen': salesmen,
         'current_date': current_date,
@@ -437,11 +401,19 @@ def calendar_view(request):
         'selected_type': appointment_type,
         'calendar_weeks': calendar_weeks,
         'week_days': week_days,
-        'bookings': bookings,  # Keep for any additional template needs
+        'prev_month': prev_month,
+        'next_month': next_month,
+        'prev_date': prev_date,
+        'next_date': next_date,
+        'day_available_slots': day_available_slots,
+        'day_pending_bookings': day_pending_bookings,
+        'day_confirmed_bookings': day_confirmed_bookings,
+        'day_declined_bookings': day_declined_bookings,
     }
     
     return render(request, 'calendar.html', context)
     
+
 @login_required
 def booking_create(request):
     if request.method == 'POST':
