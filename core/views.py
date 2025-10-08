@@ -327,19 +327,12 @@ def calendar_view(request):
     
     available_slots_dict = {}
     for slot in timeslots:
+        # With slot deactivated on pending/confirmed/completed, any active slot is available
         date_key = slot.date
-        is_booked = bookings.filter(
-            salesman=slot.salesman,
-            appointment_date=slot.date,
-            appointment_time=slot.start_time,
-            status__in=['pending', 'confirmed', 'completed']
-        ).exists()
-        
-        if not is_booked:
-            if date_key not in available_slots_dict:
-                available_slots_dict[date_key] = []
-            slot_obj = SlotData(slot.date, slot.start_time, slot.salesman, slot.appointment_type)
-            available_slots_dict[date_key].append(slot_obj)
+        if date_key not in available_slots_dict:
+            available_slots_dict[date_key] = []
+        slot_obj = SlotData(slot.date, slot.start_time, slot.salesman, slot.appointment_type)
+        available_slots_dict[date_key].append(slot_obj)
     
     # Organize bookings by status for admins/remote agents, or as appointments for salesmen
     pending_bookings_dict = {}
@@ -445,6 +438,7 @@ def calendar_view(request):
         'day_declined_bookings': day_declined_bookings,
         'day_appointments': day_appointments,
         'is_salesman': is_salesman and not is_admin,  # Flag for template
+        'is_remote_agent': is_remote_agent and not is_admin,
     }
     
     return render(request, 'calendar.html', context)
@@ -453,17 +447,17 @@ def calendar_view(request):
 def booking_create(request):
     # Extract initial data from URL params (needed for both GET and POST)
     initial = {}
-    if request.GET.get('date'):
-        initial['appointment_date'] = request.GET.get('date')
-    if request.GET.get('time'):
-        initial['appointment_time'] = request.GET.get('time')
-    if request.GET.get('salesman'):
-        initial['salesman'] = request.GET.get('salesman')
-    if request.GET.get('type'):
-        initial['appointment_type'] = request.GET.get('type')
     
+    # Store key parameters needed to find the AvailableTimeSlot
+    slot_salesman_id = request.GET.get('salesman')
+    slot_date_str = request.GET.get('date')
     start_time_str = request.GET.get('start_time')
     end_time_str = request.GET.get('end_time')
+    slot_type = request.GET.get('type')
+    
+    # --- Time and Duration Calculation (Existing Logic) ---
+    if slot_date_str:
+        initial['appointment_date'] = slot_date_str
 
     if start_time_str and end_time_str:
         try:
@@ -474,24 +468,31 @@ def booking_create(request):
             # Pass a proper time object to the form
             initial['appointment_time'] = t1.time()
 
-            # Calculate duration
+            # Calculate duration from timeslot start/end times
             delta = datetime.combine(date.min, t2.time()) - datetime.combine(date.min, t1.time())
             duration_in_minutes = int(delta.total_seconds() / 60)
+            # Ensure minimum 15 minutes
+            duration_in_minutes = max(15, duration_in_minutes)
             initial['duration_minutes'] = duration_in_minutes
 
         except (ValueError, TypeError):
             # Fallback to default duration if calculation fails
             initial['duration_minutes'] = 15
-            if request.method == 'GET':  # Only show message on initial load
-                messages.error(request, "Could not determine appointment duration from the selected slot. Please check the duration.")
+            if request.method == 'GET':
+                 messages.error(request, "Could not determine appointment duration from the selected slot. Please check the duration.")
     else:
         # Fallback if no time range is provided
         initial['duration_minutes'] = 15
 
+    if slot_salesman_id:
+        initial['salesman'] = slot_salesman_id
+    if slot_type:
+        initial['appointment_type'] = slot_type
+
     # Auto-fill zoom link for zoom appointments
     if initial.get('appointment_type') == 'zoom':
         try:
-            config = SystemConfig.objects.first()
+            config = SystemConfig.get_config()
             if config and config.zoom_link:
                 initial['zoom_link'] = config.zoom_link
         except SystemConfig.DoesNotExist:
@@ -501,20 +502,58 @@ def booking_create(request):
         # Pass initial data to POST form so template can access it on validation errors
         form = BookingForm(request.POST, initial=initial, request=request)
         if form.is_valid():
-            booking = form.save()
             
-            # Different messages based on who created it
+            # 1. --- 🌟 NEW LOGIC: FIND THE AVAILABLE TIME SLOT 🌟 ---
+            available_slot = None
+            
+            # Use data from the form's cleaned_data (or initial data, which comes from GET)
+            # as these are the guaranteed, validated values.
+            
+            # Ensure all required parameters are present to query the slot
+            if (form.cleaned_data.get('salesman') and 
+                form.cleaned_data.get('appointment_date') and 
+                form.cleaned_data.get('appointment_time') and 
+                form.cleaned_data.get('appointment_type')):
+                
+                try:
+                    # Look for the ACTIVE slot matching the booking's exact start time and type
+                    available_slot = AvailableTimeSlot.objects.get(
+                        salesman=form.cleaned_data['salesman'],
+                        date=form.cleaned_data['appointment_date'],
+                        start_time=form.cleaned_data['appointment_time'],
+                        appointment_type=form.cleaned_data['appointment_type'],
+                        is_active=True # CRUCIAL: Must be an active slot
+                    )
+                except AvailableTimeSlot.DoesNotExist:
+                    # Fail the booking if the selected slot is no longer available/active
+                    messages.error(request, "The selected time slot is no longer active or available.")
+                    # Return the form with the error message
+                    return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
+            
+            # 2. Save the Booking object (commit=False)
+            booking = form.save(commit=False)
+            
+            # 3. --- 🌟 LINK THE SLOT 🌟 ---
+            if available_slot:
+                booking.available_slot = available_slot
+            
+            # Set system fields and final save
+            booking.created_by = request.user
+            booking.save() # The custom save method handles deactivating the slot for pending/confirmed
+            
+            # 4. --- Handle Notifications (Existing Logic) ---
             is_remote_agent = request.user.groups.filter(name='remote_agent').exists()
             
             if is_remote_agent:
-                # Remote agent - needs approval
+                # Remote agent - needs approval (status remains 'pending')
                 messages.warning(
                     request, 
                     f'Booking submitted successfully! Status: Pending Admin Approval. '
                     f'You will receive an email once the booking is reviewed.'
                 )
             else:
-                # Admin/Staff - auto-confirmed, send emails now
+                # Admin/Staff - auto-confirmed (status is set to 'confirmed' by default or form)
+                # Slot is deactivated by Booking.save() because status='confirmed'
                 try:
                     send_booking_confirmation(booking)
                     messages.success(
@@ -530,7 +569,6 @@ def booking_create(request):
         form = BookingForm(initial=initial, request=request)
     
     return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
-
 @login_required
 def booking_detail(request, pk):
     booking = get_object_or_404(Booking, pk=pk)
@@ -551,12 +589,9 @@ def booking_edit(request, pk):
         messages.error(request, 'This booking cannot be edited (locked or in the past).')
         return redirect('booking_detail', pk=pk)
     
-    # Check permissions: Only admins or remote agents who created the booking
+    # Check permissions: Only admins can edit. Remote agents and salesmen cannot edit.
     if not request.user.is_staff:
-        if request.user.groups.filter(name='salesman').exists():
-            return HttpResponseForbidden("Salesmen cannot edit bookings.")
-        if booking.created_by != request.user:
-            return HttpResponseForbidden("You don't have permission to edit this booking.")
+        return HttpResponseForbidden("Only administrators can edit bookings.")
     
     if request.method == 'POST':
         form = BookingForm(request.POST, instance=booking, request=request)
@@ -666,12 +701,9 @@ def booking_cancel(request, pk):
         messages.error(request, 'This booking is locked (payroll finalized). Contact admin for adjustments.')
         return redirect('booking_detail', pk=pk)
     
-    # Check permissions: Only admins or remote agents who created the booking
+    # Check permissions: Only admins can cancel. Remote agents and salesmen cannot cancel.
     if not request.user.is_staff:
-        if request.user.groups.filter(name='salesman').exists():
-            return HttpResponseForbidden("Salesmen cannot cancel bookings.")
-        if booking.created_by != request.user:
-            return HttpResponseForbidden("You don't have permission to cancel this booking.")
+        return HttpResponseForbidden("Only administrators can cancel bookings.")
     
     if request.method == 'POST':
         form = CancelBookingForm(request.POST)
@@ -959,19 +991,20 @@ def payroll_view(request):
         end_date=end_date
     )
     
-    # Get all bookings in this period
+    # Get all bookings in this period CREATED BY REMOTE AGENTS only
     bookings = Booking.objects.filter(
         appointment_date__gte=start_date,
-        appointment_date__lte=end_date
-    ).select_related('client', 'salesman')
+        appointment_date__lte=end_date,
+        created_by__groups__name='remote_agent'
+    ).select_related('client', 'salesman', 'created_by')
     
-    # Calculate commissions by user
+    # Calculate commissions by remote agent (created_by)
     user_commissions = {}
     for booking in bookings:
-        user_id = booking.salesman.id
+        user_id = booking.created_by.id
         if user_id not in user_commissions:
             user_commissions[user_id] = {
-                'user': booking.salesman,
+                'user': booking.created_by,
                 'bookings': [],
                 'total': 0,
                 'count': 0
@@ -1096,20 +1129,21 @@ def payroll_export(request):
         'Commission Amount', 'Notes'
     ])
     
-    # Get bookings
+    # Get bookings created by remote agents only
     bookings = Booking.objects.filter(
         appointment_date__gte=start_date,
-        appointment_date__lte=end_date
-    ).select_related('client', 'salesman', ).order_by('salesman', 'appointment_date')
+        appointment_date__lte=end_date,
+        created_by__groups__name='remote_agent'
+    ).select_related('client', 'salesman', 'created_by').order_by('created_by', 'appointment_date')
     
     # Write booking rows
     for booking in bookings:
         commission = booking.commission_amount if booking.counts_for_commission() else 0
         
         writer.writerow([
-            booking.salesman.employee_id,
-            booking.salesman.get_full_name(),
-            booking.salesman.email,
+            booking.created_by.employee_id,
+            booking.created_by.get_full_name(),
+            booking.created_by.email,
             booking.client.get_full_name() if hasattr(booking.client, 'get_full_name') else f"{booking.client.first_name} {booking.client.last_name}",
             booking.appointment_date,
             booking.get_appointment_type_display(),
@@ -1123,15 +1157,15 @@ def payroll_export(request):
     writer.writerow(['SUMMARY'])
     writer.writerow([])
     
-    # Calculate totals by user
+    # Calculate totals by remote agent (created_by)
     user_totals = {}
     for booking in bookings:
         if booking.counts_for_commission():
-            user_id = booking.salesman.id
+            user_id = booking.created_by.id
             if user_id not in user_totals:
                 user_totals[user_id] = {
-                    'employee_id': booking.salesman.employee_id,
-                    'name': booking.salesman.get_full_name(),
+                    'employee_id': booking.created_by.employee_id,
+                    'name': booking.created_by.get_full_name(),
                     'total': 0,
                     'count': 0
                 }

@@ -22,7 +22,7 @@
               </div>
             {% endif %}
 
-            <h5 class="border-bottom pb-2 mb-3 text-primary">Business Information</h5>
+            <h5 class="border-bottom pb-2 mb-3 text-primary">Client Information</h5>
             <div class="row g-3 mb-4">
               <div class="col-md-6">
                 <label for="{{ form.business_name.id_for_label }}" class="form-label fw-bold">Business Name *</label>
@@ -30,13 +30,12 @@
                 <div class="text-danger small mt-1">{{ form.business_name.errors }}</div>
               </div>
               <div class="col-md-6">
-                <label for="{{ form.business_owner.id_for_label }}" class="form-label fw-bold">Business Owner *</label>
+                <label for="{{ form.business_owner.id_for_label }}" class="form-label fw-bold"></label>
                 {{ form.business_owner }}
                 <div class="text-danger small mt-1">{{ form.business_owner.errors }}</div>
               </div>
             </div>
 
-            <h5 class="border-bottom pb-2 mb-3 text-primary">Client Information</h5>
             <div class="row g-3 mb-4">
               <div class="col-md-6">
                 <label for="{{ form.client_first_name.id_for_label }}" class="form-label fw-bold">First Name *</label>

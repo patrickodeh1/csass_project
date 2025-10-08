@@ -147,6 +147,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
         
 class Client(models.Model):
+    business_name = models.CharField(max_length=200, help_text="business name")
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
@@ -195,8 +196,6 @@ class Booking(models.Model):
         ('duplicate', 'Duplicate Booking'),
         ('other', 'Other'),
     ]
-    business_name = models.CharField(max_length=200, help_text="business name")
-    business_owner = models.CharField(max_length=100, help_text="business owner's full name")
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name='bookings')
     salesman = models.ForeignKey(User, on_delete=models.PROTECT, related_name='bookings')
     appointment_date = models.DateField()
@@ -222,7 +221,14 @@ class Booking(models.Model):
     declined_at = models.DateTimeField(null=True, blank=True)
     declined_by = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name='bookings_declined')
     decline_reason = models.TextField(blank=True)
-
+    available_slot = models.ForeignKey(
+        'AvailableTimeSlot', 
+        on_delete=models.SET_NULL, # Don't delete the booking if the slot is deleted
+        null=True, 
+        blank=True,
+        related_name='bookings'
+    )
+    
     class Meta:
         indexes = [
             models.Index(fields=['appointment_date']),
@@ -280,19 +286,54 @@ class Booking(models.Model):
         return self.status in ['confirmed', 'completed']
     
     def save(self, *args, **kwargs):
-        # Set commission amount if not set
+             # Set commission amount if not set
         if not self.commission_amount:
+            # Commission only applies to bookings created by remote agents
             if self.created_by and self.created_by.groups.filter(name='remote_agent').exists():
-                # Remote agents: $30 for Zoom, $50 for In-Person
+                config = SystemConfig.get_config()
                 if self.appointment_type == 'zoom':
-                    self.commission_amount = Decimal('30.00')
+                    self.commission_amount = config.default_commission_rate_zoom
                 else:  # in_person
-                    self.commission_amount = Decimal('50.00')
+                    self.commission_amount = config.default_commission_rate_in_person
             else:
                 self.commission_amount = Decimal('0.00') 
+        is_new = self.pk is None
+        new_status = self.status
+        old_status = self.__original_status if not is_new else None
         
         super().save(*args, **kwargs)
+        # Always evaluate slot activation on create, and on any status change
+        if is_new:
+            self._handle_slot_activation(new_status)
+        elif new_status != old_status:
+            self._handle_slot_activation(new_status)
+            
+        # Update the original status for next save
+        self.__original_status = self.status
+        # ---------------------------------------------------------------------
+    
+    def __str__(self):
+        return f"{self.client} with {self.salesman.get_full_name()} on {self.appointment_date}"
 
+    def _handle_slot_activation(self, new_status):
+        """Logic to activate or deactivate the associated AvailableTimeSlot."""
+        if not self.available_slot:
+            return # Exit if no slot is linked
+            
+        slot = self.available_slot
+        
+        # 1. Statuses that DEACTIVATE the slot (i.e., the slot is used)
+        #    Deactivate immediately for pending to prevent double-booking; keep inactive for confirmed/completed
+        if new_status in ['pending', 'confirmed', 'completed']:
+            if slot.is_active:
+                slot.is_active = False
+                slot.save(update_fields=['is_active'])
+                
+        # 2. Statuses that ACTIVATE the slot (i.e., the slot is released)
+        elif new_status in ['canceled', 'declined', 'no_show']:
+            if not slot.is_active:
+                slot.is_active = True
+                slot.save(update_fields=['is_active'])
 
     def conflicts_with_booking(self):
         """Check if this unavailability conflicts with any confirmed bookings"""
@@ -304,6 +345,18 @@ class Booking(models.Model):
             appointment_time__gte=self.start_time,
             appointment_time__lt=self.end_time
         ).exists()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Check if the instance has a primary key (meaning it's loaded from DB)
+        # If the instance has been initialized and has a status, set the original status.
+        # This fixes the issue when Django loads the object from the database.
+        if 'status' in self.__dict__:
+            self.__original_status = self.status
+        else:
+            # Fallback for new objects (where status might not be set yet)
+            self.__original_status = self.status if self.status else 'pending'
+
+        
 
 class PayrollPeriod(models.Model):
     STATUS_CHOICES = [

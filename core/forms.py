@@ -302,24 +302,23 @@ class CustomPasswordResetForm(PasswordResetForm):
 
 class BookingForm(forms.ModelForm):
     business_name = forms.CharField(max_length=200, required=True)
-    business_owner = forms.CharField(max_length=200, required=True)
     client_first_name = forms.CharField(max_length=100, required=True)
     client_last_name = forms.CharField(max_length=100, required=True)
     client_email = forms.EmailField(required=True)
     client_phone = forms.CharField(max_length=20, required=True)
-    zoom_link = forms.URLField(required=False, widget=forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'Zoom meeting link (if applicable)'}))
+    zoom_link = forms.URLField(required=False, widget=forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'Zoom meeting link (if applicable)', 'readonly': True}))
     
     class Meta:
         model = Booking
         fields = [
-            'business_name', 'business_owner', 'client_first_name', 'client_last_name',
+            'business_name', 'client_first_name', 'client_last_name',
             'client_email', 'client_phone', 'salesman', 'appointment_date',
             'appointment_time', 'duration_minutes', 'appointment_type', 'zoom_link', 'notes'
         ]
         widgets = {
             'appointment_date': forms.DateInput(attrs={'type': 'date'}),
             'appointment_time': forms.TimeInput(attrs={'type': 'time'}),
-            'duration_minutes': forms.Select(choices=[(15, '15 min'), (30, '30 min'), (45, '45 min'), (60, '1 hour'), (90, '1.5 hours')]),
+            'duration_minutes': forms.NumberInput(attrs={'readonly': True, 'class': 'form-control'}),
             'notes': forms.Textarea(attrs={'rows': 3}),
         }
     
@@ -345,6 +344,15 @@ class BookingForm(forms.ModelForm):
             self.fields['client_last_name'].initial = self.instance.client.last_name
             self.fields['client_email'].initial = self.instance.client.email
             self.fields['client_phone'].initial = self.instance.client.phone_number
+        
+        # Set zoom link from SystemConfig for zoom appointments
+        if self.initial.get('appointment_type') == 'zoom':
+            try:
+                config = SystemConfig.get_config()
+                if config and config.zoom_link:
+                    self.fields['zoom_link'].initial = config.zoom_link
+            except SystemConfig.DoesNotExist:
+                pass
     
     def clean(self):
         cleaned_data = super().clean()
@@ -394,18 +402,15 @@ class BookingForm(forms.ModelForm):
                     f"{salesman.get_full_name()}'s available times on {appointment_date.strftime('%A')}s: {available_times}"
                 )
             
-            # Verify entire appointment fits within slot
-            if valid_slot and duration_minutes:
-                appointment_end_time = (
-                    datetime.combine(appointment_date, appointment_time) + 
-                    timedelta(minutes=duration_minutes)
-                ).time()
-                
-                if appointment_end_time > valid_slot.end_time:
-                    raise forms.ValidationError(
-                        f"Appointment extends beyond available slot (ends at {valid_slot.end_time.strftime('%I:%M %p')}). "
-                        f"Choose earlier time or shorter duration."
-                    )
+            # Calculate duration from timeslot if not provided or override with slot duration
+            if valid_slot:
+                slot_duration = int((datetime.combine(date.min, valid_slot.end_time) - datetime.combine(date.min, valid_slot.start_time)).total_seconds() / 60)
+                # Ensure minimum 15 minutes
+                slot_duration = max(15, slot_duration)
+                if not duration_minutes or duration_minutes != slot_duration:
+                    # Override duration with slot duration
+                    cleaned_data['duration_minutes'] = slot_duration
+                    duration_minutes = slot_duration
             
             # Check for booking conflicts
             if duration_minutes:
@@ -429,6 +434,7 @@ class BookingForm(forms.ModelForm):
         client, created = Client.objects.get_or_create(
             email=self.cleaned_data['client_email'],
             defaults={
+                'business_name': self.cleaned_data['business_name'],
                 'first_name': self.cleaned_data['client_first_name'],
                 'last_name': self.cleaned_data['client_last_name'],
                 'phone_number': self.cleaned_data['client_phone'],
@@ -438,6 +444,7 @@ class BookingForm(forms.ModelForm):
         
         if not created:
             # Update existing client info
+            client.business_name = self.cleaned_data['business_name']
             client.first_name = self.cleaned_data['client_first_name']
             client.last_name = self.cleaned_data['client_last_name']
             client.phone_number = self.cleaned_data['client_phone']
@@ -502,19 +509,26 @@ class PayrollAdjustmentForm(forms.ModelForm):
 class SystemConfigForm(forms.ModelForm):
     class Meta:
         model = SystemConfig
-        fields = ['company_name', 'timezone', 'default_commission_rate_in_person', 'default_commission_rate_zoom', 'buffer_time_minutes',
-                  'reminder_lead_time_hours', 'max_advance_booking_days', 'min_advance_booking_hours']
+        fields = ['company_name', 'timezone', 'default_commission_rate_in_person', 'default_commission_rate_zoom', 'zoom_link', 'reminder_lead_time_hours']
         widgets = {
-            'company': forms.TextInput(attrs={'class': 'form-control'}),
+            'company_name': forms.TextInput(attrs={'class': 'form-control'}),
             'timezone': forms.TextInput(attrs={'class': 'form-control'}),
             'default_commission_rate_in_person': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'default_commission_rate_zoom': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'zoom_link': forms.TextInput(attrs={'class': 'form-control'}),
-            'buffer_time_minutes': forms.NumberInput(attrs={'class': 'form-control'}),
+            'zoom_link': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://zoom.us/j/...'}),
             'reminder_lead_time_hours': forms.NumberInput(attrs={'class': 'form-control'}),
-            'max_advance_booking_days': forms.NumberInput(attrs={'class': 'form-control'}),
-            'min_advance_booking_hours': forms.NumberInput(attrs={'class': 'form-control'}),
         }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Add help text for better user experience
+        self.fields['company_name'].help_text = 'Company name displayed in emails and system'
+        self.fields['timezone'].help_text = 'System timezone (e.g., America/New_York, UTC)'
+        self.fields['default_commission_rate_in_person'].help_text = 'Default commission for in-person appointments ($)'
+        self.fields['default_commission_rate_zoom'].help_text = 'Default commission for zoom appointments ($)'
+        self.fields['zoom_link'].help_text = 'Default zoom meeting link for all zoom appointments'
+        self.fields['reminder_lead_time_hours'].help_text = 'Hours before appointment to send reminder'
 
 
 class AvailableTimeSlotForm(forms.ModelForm):
