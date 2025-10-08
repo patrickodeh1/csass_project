@@ -39,11 +39,8 @@ class CompanyHolidayAdmin(admin.ModelAdmin):
     list_filter = ['is_recurring_annually', 'date']
     ordering = ['date']
 
-@admin.register(SystemConfig)
-class SystemConfigAdmin(admin.ModelAdmin):
-    list_display = ['company_name', 'default_commission_rate', 'buffer_time_minutes', 
-                    'timezone', 'updated_at']
-    readonly_fields = ['updated_at']
+admin.site.register(SystemConfig)
+
 
 @admin.register(AuditLog)
 class AuditLogAdmin(admin.ModelAdmin):

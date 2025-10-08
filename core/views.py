@@ -447,11 +447,57 @@ def calendar_view(request):
     
     return render(request, 'calendar.html', context)
     
-
 @login_required
 def booking_create(request):
+    # Extract initial data from URL params (needed for both GET and POST)
+    initial = {}
+    if request.GET.get('date'):
+        initial['appointment_date'] = request.GET.get('date')
+    if request.GET.get('time'):
+        initial['appointment_time'] = request.GET.get('time')
+    if request.GET.get('salesman'):
+        initial['salesman'] = request.GET.get('salesman')
+    if request.GET.get('type'):
+        initial['appointment_type'] = request.GET.get('type')
+    
+    start_time_str = request.GET.get('start_time')
+    end_time_str = request.GET.get('end_time')
+
+    if start_time_str and end_time_str:
+        try:
+            # Convert time strings to datetime objects
+            t1 = datetime.strptime(start_time_str, '%H:%M')
+            t2 = datetime.strptime(end_time_str, '%H:%M')
+            
+            # Pass a proper time object to the form
+            initial['appointment_time'] = t1.time()
+
+            # Calculate duration
+            delta = datetime.combine(date.min, t2.time()) - datetime.combine(date.min, t1.time())
+            duration_in_minutes = int(delta.total_seconds() / 60)
+            initial['duration_minutes'] = duration_in_minutes
+
+        except (ValueError, TypeError):
+            # Fallback to default duration if calculation fails
+            initial['duration_minutes'] = 15
+            if request.method == 'GET':  # Only show message on initial load
+                messages.error(request, "Could not determine appointment duration from the selected slot. Please check the duration.")
+    else:
+        # Fallback if no time range is provided
+        initial['duration_minutes'] = 15
+
+    # Auto-fill zoom link for zoom appointments
+    if initial.get('appointment_type') == 'zoom':
+        try:
+            config = SystemConfig.objects.first()
+            if config and config.zoom_link:
+                initial['zoom_link'] = config.zoom_link
+        except SystemConfig.DoesNotExist:
+            pass
+    
     if request.method == 'POST':
-        form = BookingForm(request.POST, request=request)
+        # Pass initial data to POST form so template can access it on validation errors
+        form = BookingForm(request.POST, initial=initial, request=request)
         if form.is_valid():
             booking = form.save()
             
@@ -462,7 +508,7 @@ def booking_create(request):
                 # Remote agent - needs approval
                 messages.warning(
                     request, 
-                    f'Booking submitted successfully! Status: <strong>Pending Admin Approval</strong>. '
+                    f'Booking submitted successfully! Status: Pending Admin Approval. '
                     f'You will receive an email once the booking is reviewed.'
                 )
             else:
@@ -478,20 +524,7 @@ def booking_create(request):
             
             return redirect('calendar')
     else:
-        # Pre-fill from URL params (clicked time slot)
-        initial = {}
-        if request.GET.get('date'):
-            initial['appointment_date'] = request.GET.get('date')
-        if request.GET.get('time'):
-            initial['appointment_time'] = request.GET.get('time')
-        if request.GET.get('salesman'):
-            initial['salesman'] = request.GET.get('salesman')
-        if request.GET.get('type'):
-            initial['appointment_type'] = request.GET.get('type')
-        
-        # Set default duration
-        initial['duration_minutes'] = 60
-        
+        # GET request - create form with initial data
         form = BookingForm(initial=initial, request=request)
     
     return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
@@ -1234,7 +1267,7 @@ def user_create(request):
                     logger.info(f"User created: {user.username}, Employee ID: {user.employee_id}, Temp Password: {temp_password}")
                     messages.success(
                         request, 
-                        f'User created successfully! Temporary password: <strong>{temp_password}</strong> '
+                        f'User created successfully! Temporary password: {temp_password} '
                         f'(Please save this and share securely with the user)'
                     )
                 
@@ -1267,7 +1300,7 @@ def user_edit(request, pk):
             # If password was provided, it's already saved by form
             # Just show a message
             if password_from_form:
-                messages.success(request, f'User updated successfully! New password: <strong>{password_from_form}</strong>')
+                messages.success(request, f'User updated successfully! New password: {password_from_form}')
             else:
                 messages.success(request, 'User updated successfully!')
             

@@ -301,35 +301,37 @@ class CustomPasswordResetForm(PasswordResetForm):
     )
 
 class BookingForm(forms.ModelForm):
+    business_name = forms.CharField(max_length=200, required=True)
+    business_owner = forms.CharField(max_length=200, required=True)
     client_first_name = forms.CharField(max_length=100, required=True)
     client_last_name = forms.CharField(max_length=100, required=True)
     client_email = forms.EmailField(required=True)
     client_phone = forms.CharField(max_length=20, required=True)
-    zoom_link = forms.URLField(
-        required=False,
-        widget=forms.URLInput(attrs={
-            'class': 'form-control',
-            'placeholder': 'https://zoom.us/j/1234567890 or https://meet.google.com/xxx-xxxx-xxx'
-        }),
-        help_text='Paste your Zoom/Google Meet link here (only for Zoom appointments)'
-    )
+    zoom_link = forms.URLField(required=False, widget=forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'Zoom meeting link (if applicable)'}))
     
     class Meta:
         model = Booking
-        fields = ['salesman', 'appointment_date', 'appointment_time', 'duration_minutes', 
-                  'appointment_type', 'zoom_link', 'notes']
+        fields = [
+            'business_name', 'business_owner', 'client_first_name', 'client_last_name',
+            'client_email', 'client_phone', 'salesman', 'appointment_date',
+            'appointment_time', 'duration_minutes', 'appointment_type', 'zoom_link', 'notes'
+        ]
         widgets = {
-            'appointment_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'appointment_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
-            'duration_minutes': forms.Select(choices=[(30, '30 min'), (45, '45 min'), (60, '1 hour'), (90, '1.5 hours')], attrs={'class': 'form-control'}),
-            'appointment_type': forms.Select(attrs={'class': 'form-control'}),
-            'notes': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
+            'appointment_date': forms.DateInput(attrs={'type': 'date'}),
+            'appointment_time': forms.TimeInput(attrs={'type': 'time'}),
+            'duration_minutes': forms.Select(choices=[(15, '15 min'), (30, '30 min'), (45, '45 min'), (60, '1 hour'), (90, '1.5 hours')]),
+            'notes': forms.Textarea(attrs={'rows': 3}),
         }
     
     def __init__(self, *args, **kwargs):
         self.request = kwargs.pop('request', None)
         super().__init__(*args, **kwargs)
         
+        for field_name, field in self.fields.items():
+            # Add a check to avoid overwriting specific widget types like Checkbox
+            if not isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs.update({'class': 'form-control'})
+
         # Filter salesmen to only active salesmen
         self.fields['salesman'].queryset = User.objects.filter(
             is_active_salesman=True,
@@ -354,7 +356,8 @@ class BookingForm(forms.ModelForm):
         zoom_link = cleaned_data.get('zoom_link')
 
         if appointment_type == 'zoom' and not zoom_link:
-            raise forms.ValidationError("Zoom link is required for Zoom appointments")
+            self.add_error('zoom_link', 'A meeting link is required for Zoom appointments.')
+            
         
         if all([salesman, appointment_date, appointment_time, appointment_type]):
             # Get available slots for this day and appointment type
@@ -499,12 +502,14 @@ class PayrollAdjustmentForm(forms.ModelForm):
 class SystemConfigForm(forms.ModelForm):
     class Meta:
         model = SystemConfig
-        fields = ['company_name', 'timezone', 'default_commission_rate', 'buffer_time_minutes',
+        fields = ['company_name', 'timezone', 'default_commission_rate_in_person', 'default_commission_rate_zoom', 'buffer_time_minutes',
                   'reminder_lead_time_hours', 'max_advance_booking_days', 'min_advance_booking_hours']
         widgets = {
-            'company_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'company': forms.TextInput(attrs={'class': 'form-control'}),
             'timezone': forms.TextInput(attrs={'class': 'form-control'}),
-            'default_commission_rate': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'default_commission_rate_in_person': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'default_commission_rate_zoom': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'zoom_link': forms.TextInput(attrs={'class': 'form-control'}),
             'buffer_time_minutes': forms.NumberInput(attrs={'class': 'form-control'}),
             'reminder_lead_time_hours': forms.NumberInput(attrs={'class': 'form-control'}),
             'max_advance_booking_days': forms.NumberInput(attrs={'class': 'form-control'}),

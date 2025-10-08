@@ -172,6 +172,7 @@ class Client(models.Model):
     def get_booking_count(self):
         return self.bookings.exclude(status='canceled').count()
 
+    
 class Booking(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
@@ -194,7 +195,8 @@ class Booking(models.Model):
         ('duplicate', 'Duplicate Booking'),
         ('other', 'Other'),
     ]
-    
+    business_name = models.CharField(max_length=200, help_text="business name")
+    business_owner = models.CharField(max_length=100, help_text="business owner's full name")
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name='bookings')
     salesman = models.ForeignKey(User, on_delete=models.PROTECT, related_name='bookings')
     appointment_date = models.DateField()
@@ -387,8 +389,13 @@ class SystemConfig(models.Model):
     # Singleton pattern - only one record with id=1
     company_name = models.CharField(max_length=200, default='Revenue Acceleration Unit')
     timezone = models.CharField(max_length=50, default='UTC')
-    default_commission_rate = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('50.00'))
+    default_commission_rate_in_person = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('50.00'))
+    default_commission_rate_zoom = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('30.00'))
     buffer_time_minutes = models.IntegerField(default=30)
+    zoom_link = models.URLField(
+        blank=True,
+        default='us04web.zoom.us/j/77703295752?pwd=n8xdNGWmJa7mFnn1JlFwUw0C0jXNH0.1'
+        )
     reminder_lead_time_hours = models.IntegerField(default=24)
     max_advance_booking_days = models.IntegerField(default=90)
     min_advance_booking_hours = models.IntegerField(default=2)
