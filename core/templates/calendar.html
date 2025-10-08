@@ -10,7 +10,6 @@
         </div>
     </div>
 
-    <!-- Filters -->
     <div class="card mb-4">
         <div class="card-body">
             <form method="get" class="row g-3">
@@ -51,7 +50,6 @@
         </div>
     </div>
 
-    <!-- Calendar Display -->
     <div class="card">
         <div class="card-header bg-primary text-white">
             <div class="row align-items-center">
@@ -86,7 +84,6 @@
             </div>
         </div>
         <div class="card-body">
-            <!-- Month View -->
             {% if view_mode == 'month' %}
             <div class="table-responsive">
                 <table class="table table-bordered calendar-table">
@@ -110,7 +107,6 @@
                                     <div class="fw-bold mb-2" style="font-size: 1.1rem;">{{ day_info.day }}</div>
                                     
                                     {% if is_salesman %}
-                                    <!-- Appointments for Salesmen -->
                                     {% for appt in day_info.appointments|slice:":3" %}
                                     <div class="appointment-card mb-1 w-100" 
                                         style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid {% if appt.appointment_type == 'zoom' %}#17a2b8{% else %}#6f42c1{% endif %}; background: {% if appt.appointment_type == 'zoom' %}#d1ecf1{% else %}#e2d9f3{% endif %}; padding: 6px 8px; border-radius: 4px;"
@@ -128,67 +124,71 @@
                                         <i class="bi bi-three-dots"></i> +{{ day_info.appointments|length|add:"-3" }} more
                                     </div>
                                     {% endif %}
+
                                     {% else %}
-                                    <!-- Available slots (green) for Admins/Remote Agents -->
-                                    {% for slot in day_info.available_slots|slice:":2" %}
-                                    <div class="available-slot mb-1 w-100" 
-                                        style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #28a745; background: #d4edda; padding: 6px 8px; border-radius: 4px;" 
-                                        onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'"
-                                        title="Click to book: {{ slot.time|date:'g:i A' }} with {{ slot.salesman.get_full_name }}">
-                                        <div><i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:iA" }}</strong></div>
-                                        <div class="text-truncate"><i class="bi bi-person-badge"></i> {{ slot.salesman.first_name }}</div>
-                                        <span class="badge" style="font-size: 0.65rem; {% if slot.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                            {% if slot.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                                        </span>
-                                    </div>
-                                    {% endfor %}
-                                    {% if day_info.available_slots|length > 2 %}
-                                    <div class="text-muted small" style="font-size: 0.7rem; padding-left: 6px;">
-                                        <i class="bi bi-three-dots"></i> +{{ day_info.available_slots|length|add:"-2" }} more
-                                    </div>
-                                    {% endif %}
-                                    
-                                    <!-- Pending bookings (yellow) -->
-                                    {% for booking in day_info.pending_bookings %}
+                                    {% for booking in day_info.pending_bookings|slice:":1" %}
                                     <div class="mb-1 w-100" 
                                         style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #ffc107; background: #fff3cd; padding: 6px 8px; border-radius: 4px;"
                                         onclick="window.location.href='{% url 'booking_detail' booking.id %}'"
-                                        title="Pending: {{ booking.appointment_time|date:'g:i A' }} with {{ booking.salesman.get_full_name }}">
+                                        title="Pending: {{ booking.appointment_time|date:'g:i A' }} - {{ booking.business_name }} ({{ booking.salesman.first_name }})">
                                         <div><i class="bi bi-hourglass-split"></i> <strong>{{ booking.appointment_time|date:"g:iA" }}</strong></div>
-                                        <div class="text-truncate"><i class="bi bi-person-badge"></i> {{ booking.salesman.first_name }}</div>
-                                        <span class="badge" style="font-size: 0.65rem; {% if booking.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                            {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                                        </span>
+                                        <div class="text-truncate"><i class="bi bi-briefcase"></i> **PENDING** - {{ booking.business_name }}</div>
+                                        <span class="badge bg-warning text-dark" style="font-size: 0.65rem;">PENDING</span>
                                     </div>
                                     {% endfor %}
                                     
-                                    <!-- Confirmed bookings (blue) -->
-                                    {% for booking in day_info.confirmed_bookings %}
+                                    {% for booking in day_info.confirmed_bookings|slice:":1" %}
                                     <div class="mb-1 w-100" 
                                         style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #007bff; background: #cce5ff; padding: 6px 8px; border-radius: 4px;"
                                         onclick="window.location.href='{% url 'booking_detail' booking.id %}'"
-                                        title="Confirmed: {{ booking.appointment_time|date:'g:i A' }} with {{ booking.salesman.get_full_name }}">
+                                        title="Confirmed: {{ booking.appointment_time|date:'g:i A' }} - {{ booking.business_name }}">
                                         <div><i class="bi bi-check-circle"></i> <strong>{{ booking.appointment_time|date:"g:iA" }}</strong></div>
-                                        <div class="text-truncate"><i class="bi bi-person-badge"></i> {{ booking.salesman.first_name }}</div>
-                                        <span class="badge" style="font-size: 0.65rem; {% if booking.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                            {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                                        </span>
+                                        <div class="text-truncate"><i class="bi bi-briefcase"></i> {{ booking.business_name }}</div>
+                                        <span class="badge bg-primary" style="font-size: 0.65rem;">CONFIRMED</span>
                                     </div>
                                     {% endfor %}
                                     
-                                    <!-- Declined bookings (red) -->
-                                    {% for booking in day_info.declined_bookings %}
+                                    {% for booking in day_info.declined_bookings|slice:":1" %}
                                     <div class="mb-1 w-100" 
                                         style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #dc3545; background: #f8d7da; padding: 6px 8px; border-radius: 4px;"
                                         onclick="window.location.href='{% url 'booking_detail' booking.id %}'"
-                                        title="Declined: {{ booking.appointment_time|date:'g:i A' }} with {{ booking.salesman.get_full_name }}">
+                                        title="Declined: {{ booking.appointment_time|date:'g:i A' }} - {{ booking.business_name }} ({{ booking.salesman.first_name }})">
                                         <div><i class="bi bi-x-circle"></i> <strong>{{ booking.appointment_time|date:"g:iA" }}</strong></div>
-                                        <div class="text-truncate"><i class="bi bi-person-badge"></i> {{ booking.salesman.first_name }}</div>
-                                        <span class="badge" style="font-size: 0.65rem; {% if booking.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                            {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                                        </span>
+                                        <div class="text-truncate"><i class="bi bi-briefcase"></i> **DECLINED** - {{ booking.business_name }}</div>
+                                        <span class="badge bg-danger" style="font-size: 0.65rem;">DECLINED</span>
                                     </div>
                                     {% endfor %}
+
+                                    {% with all_bookings=day_info.pending_bookings|add:day_info.confirmed_bookings|add:day_info.declined_bookings %}
+                                    
+                                    {% if not all_bookings %}
+                                        {% for slot in day_info.available_slots|slice:":2" %}
+                                        <div class="available-slot mb-1 w-100" 
+                                            style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #28a745; background: #d4edda; padding: 6px 8px; border-radius: 4px;" 
+                                            onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'"
+                                            title="Click to book: {{ slot.time|date:'g:i A' }} with {{ slot.salesman.get_full_name }}">
+                                            <div><i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:iA" }}</strong></div>
+                                            <div class="text-truncate"><i class="bi bi-person-badge"></i> {{ slot.salesman.first_name }}</div>
+                                            <span class="badge" style="font-size: 0.65rem; background: #28a745; color: white;">AVAILABLE</span>
+                                        </div>
+                                        {% endfor %}
+                                        {% if day_info.available_slots|length > 2 %}
+                                        <div class="text-muted small" style="font-size: 0.7rem; padding-left: 6px;">
+                                            <i class="bi bi-three-dots"></i> +{{ day_info.available_slots|length|add:"-2" }} more slots
+                                        </div>
+                                        {% endif %}
+                                    {% endif %}
+                                    
+                                    {% endwith %}
+                                    
+                                    {% with total_bookings=day_info.pending_bookings|length|add:day_info.confirmed_bookings|length|add:day_info.declined_bookings|length %}
+                                    {% if total_bookings > 3 %}
+                                    <div class="text-muted small" style="font-size: 0.7rem; padding-left: 6px;">
+                                        <i class="bi bi-three-dots"></i> +{{ total_bookings|add:"-3" }} more bookings
+                                    </div>
+                                    {% endif %}
+                                    {% endwith %}
+                                    
                                     {% endif %}
                                 {% endif %}
                             </td>
@@ -199,7 +199,6 @@
                 </table>
             </div>
             {% elif view_mode == 'week' %}
-            <!-- Week View -->
             <div class="row g-2">
                 {% for day_data in week_days %}
                     <div class="col">
@@ -209,7 +208,6 @@
                         </h6>
                         
                         {% if is_salesman %}
-                        <!-- Appointments for Salesmen -->
                         {% for appt in day_data.appointments|slice:":4" %}
                         <div class="card mb-2" style="cursor: pointer; border: 2px solid {% if appt.appointment_type == 'zoom' %}#17a2b8{% else %}#6f42c1{% endif %}; background: {% if appt.appointment_type == 'zoom' %}#d1ecf1{% else %}#e2d9f3{% endif %};"
                             onclick="window.location.href='{% url 'booking_detail' appt.id %}'">
@@ -226,33 +224,31 @@
                         <small class="text-muted d-block text-center">+{{ day_data.appointments|length|add:"-4" }} more</small>
                         {% endif %}
                         {% else %}
-                        <!-- Available slots for Admins/Remote Agents -->
-                        {% for slot in day_data.available_slots|slice:":3" %}
-                        <div class="card border-success mb-2" style="cursor: pointer; background: #d4edda;" 
-                            onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'">
-                            <div class="card-body py-2 px-2">
-                                <div class="d-block"><i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:i A" }}</strong></div>
-                                <small class="d-block text-truncate"><i class="bi bi-person-badge"></i> {{ slot.salesman.first_name }}</small>
-                                <span class="badge" style="font-size: 0.65rem; {% if slot.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                    {% if slot.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                                </span>
+                        {% with all_bookings=day_data.pending_bookings|add:day_data.confirmed_bookings|add:day_data.declined_bookings %}
+
+                        {% if not all_bookings %}
+                            {% for slot in day_data.available_slots|slice:":3" %}
+                            <div class="card border-success mb-2" style="cursor: pointer; background: #d4edda;" 
+                                onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'">
+                                <div class="card-body py-2 px-2">
+                                    <div class="d-block"><i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:i A" }}</strong></div>
+                                    <small class="d-block text-truncate"><i class="bi bi-person-badge"></i> {{ slot.salesman.first_name }}</small>
+                                    <span class="badge" style="font-size: 0.65rem; background: #28a745; color: white;">AVAILABLE</span>
+                                </div>
                             </div>
-                        </div>
-                        {% endfor %}
-                        {% if day_data.available_slots|length > 3 %}
-                        <small class="text-muted d-block text-center">+{{ day_data.available_slots|length|add:"-3" }} more</small>
+                            {% endfor %}
+                            {% if day_data.available_slots|length > 3 %}
+                            <small class="text-muted d-block text-center">+{{ day_data.available_slots|length|add:"-3" }} more slots</small>
+                            {% endif %}
                         {% endif %}
-                        
-                        <!-- Pending/Confirmed/Declined bookings with type badges -->
+
                         {% for booking in day_data.pending_bookings %}
                         <div class="card border-warning mb-2" style="cursor: pointer; background: #fff3cd;"
                             onclick="window.location.href='{% url 'booking_detail' booking.id %}'">
                             <div class="card-body py-2 px-2">
                                 <div class="d-block"><i class="bi bi-hourglass-split"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong></div>
-                                <small class="d-block text-truncate"><i class="bi bi-person-badge"></i> {{ booking.salesman.first_name }}</small>
-                                <span class="badge" style="font-size: 0.65rem; {% if booking.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                    {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                                </span>
+                                <small class="d-block text-truncate"><i class="bi bi-briefcase"></i> **PENDING** - {{ booking.business_name }}</small>
+                                <span class="badge bg-warning text-dark" style="font-size: 0.65rem;">PENDING</span>
                             </div>
                         </div>
                         {% endfor %}
@@ -262,10 +258,8 @@
                             onclick="window.location.href='{% url 'booking_detail' booking.id %}'">
                             <div class="card-body py-2 px-2">
                                 <div class="d-block"><i class="bi bi-check-circle"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong></div>
-                                <small class="d-block text-truncate"><i class="bi bi-person-badge"></i> {{ booking.salesman.first_name }}</small>
-                                <span class="badge" style="font-size: 0.65rem; {% if booking.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                    {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                                </span>
+                                <small class="d-block text-truncate"><i class="bi bi-briefcase"></i> {{ booking.business_name }}</small>
+                                <span class="badge bg-primary" style="font-size: 0.65rem;">CONFIRMED</span>
                             </div>
                         </div>
                         {% endfor %}
@@ -275,22 +269,19 @@
                             onclick="window.location.href='{% url 'booking_detail' booking.id %}'">
                             <div class="card-body py-2 px-2">
                                 <div class="d-block"><i class="bi bi-x-circle"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong></div>
-                                <small class="d-block text-truncate"><i class="bi bi-person-badge"></i> {{ booking.salesman.first_name }}</small>
-                                <span class="badge" style="font-size: 0.65rem; {% if booking.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                    {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                                </span>
+                                <small class="d-block text-truncate"><i class="bi bi-briefcase"></i> **DECLINED** - {{ booking.business_name }}</small>
+                                <span class="badge bg-danger" style="font-size: 0.65rem;">DECLINED</span>
                             </div>
                         </div>
                         {% endfor %}
+                        {% endwith %}
                         {% endif %}
                     </div>
                 {% endfor %}
             </div>
             {% else %}
-            <!-- Day View -->
             <div class="list-group">
                 {% if is_salesman %}
-                <!-- Appointments for Salesmen -->
                 {% if day_appointments %}
                 <div class="mb-3">
                     <h6 class="text-muted"><i class="bi bi-calendar-event"></i> My Appointments</h6>
@@ -316,8 +307,8 @@
                 </div>
                 {% endif %}
                 {% else %}
-                <!-- Available slots for Admins/Remote Agents -->
-                {% if day_available_slots %}
+                {% with all_bookings=day_pending_bookings|add:day_confirmed_bookings|add:day_declined_bookings %}
+                {% if day_available_slots and not all_bookings %}
                 <div class="mb-3">
                     <h6 class="text-muted"><i class="bi bi-plus-circle"></i> Available Time Slots</h6>
                     {% for slot in day_available_slots %}
@@ -327,7 +318,7 @@
                             <h5 class="mb-1">
                                 <i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:i A" }}</strong> - {{ slot.salesman.get_full_name }}
                             </h5>
-                            <span class="badge" style="font-size: 0.9rem; {% if slot.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
+                            <span class="badge" style="font-size: 0.9rem; background: #28a745; color: white;">
                                 {% if slot.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
                             </span>
                         </div>
@@ -335,141 +326,94 @@
                     {% endfor %}
                 </div>
                 {% endif %}
-                
-                <!-- Pending bookings -->
-                {% if day_pending_bookings %}
-                <div class="mb-3">
-                    <h6 class="text-muted"><i class="bi bi-hourglass-split"></i> Pending Bookings</h6>
-                    {% for booking in day_pending_bookings %}
-                    <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action list-group-item-warning" style="border-left: 5px solid #ffc107;">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h5 class="mb-1 text-dark">
-                                <i class="bi bi-hourglass-split"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong> - {{ booking.salesman.get_full_name }}
-                            </h5>
-                            <span class="badge" style="font-size: 0.9rem; {% if booking.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                            </span>
-                        </div>
-                    </a>
-                    {% endfor %}
-                </div>
-                {% endif %}
-                
-                <!-- Confirmed bookings -->
-                {% if day_confirmed_bookings %}
-                <div class="mb-3">
-                    <h6 class="text-muted"><i class="bi bi-check-circle"></i> Confirmed Bookings</h6>
-                    {% for booking in day_confirmed_bookings %}
-                    <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action list-group-item-primary" style="border-left: 5px solid #007bff;">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h5 class="mb-1 text-primary">
-                                <i class="bi bi-check-circle"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong> - {{ booking.salesman.get_full_name }}
-                            </h5>
-                            <span class="badge" style="font-size: 0.9rem; {% if booking.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                            </span>
-                        </div>
-                    </a>
-                    {% endfor %}
-                </div>
-                {% endif %}
-                
-                <!-- Declined bookings -->
-                {% if day_declined_bookings %}
-                <div class="mb-3">
-                    <h6 class="text-muted"><i class="bi bi-x-circle"></i> Declined Bookings</h6>
-                    {% for booking in day_declined_bookings %}
-                    <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action list-group-item-danger" style="border-left: 5px solid #dc3545;">
-                        <div class="d-flex w-100 justify-content-between">
-                            <h5 class="mb-1 text-danger">
-                                <i class="bi bi-x-circle"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong> - {{ booking.salesman.get_full_name }}
-                            </h5>
-                            <span class="badge" style="font-size: 0.9rem; {% if booking.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
-                                {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
-                            </span>
-                        </div>
-                    </a>
-                    {% endfor %}
-                </div>
-                {% endif %}
-                
-                {% if not day_available_slots and not day_pending_bookings and not day_confirmed_bookings and not day_declined_bookings %}
-                <div class="text-center text-muted py-5">
-                    <i class="bi bi-calendar-x" style="font-size: 3rem;"></i>
-                    <p class="mt-3">No slots or bookings for this day</p>
-                </div>
+                {% endwith %}
+
+                {% if user.is_staff or day_pending_bookings or day_confirmed_bookings or day_declined_bookings %}
+                    {% if day_pending_bookings %}
+                    <div class="mb-3">
+                        <h6 class="text-muted"><i class="bi bi-hourglass-split"></i> Pending Bookings</h6>
+                        {% for booking in day_pending_bookings %}
+                        <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action list-group-item-warning" style="border-left: 5px solid #ffc107;">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1 text-dark">
+                                    <i class="bi bi-hourglass-split"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong> - {{ booking.business_name }}
+                                </h5>
+                                <span class="badge bg-warning text-dark" style="font-size: 0.9rem;">PENDING</span>
+                            </div>
+                            <small><i class="bi bi-person-badge"></i> Salesman: {{ booking.salesman.get_full_name }}</small>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
+                    {% if day_confirmed_bookings %}
+                    <div class="mb-3">
+                        <h6 class="text-muted"><i class="bi bi-check-circle"></i> Confirmed Bookings</h6>
+                        {% for booking in day_confirmed_bookings %}
+                        <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action list-group-item-primary" style="border-left: 5px solid #007bff;">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1 text-primary">
+                                    <i class="bi bi-check-circle"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong> - {{ booking.business_name }}
+                                </h5>
+                                <span class="badge bg-primary" style="font-size: 0.9rem;">CONFIRMED</span>
+                            </div>
+                            <small><i class="bi bi-person-badge"></i> Salesman: {{ booking.salesman.get_full_name }}</small>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
+                    {% if day_declined_bookings %}
+                    <div class="mb-3">
+                        <h6 class="text-muted"><i class="bi bi-x-circle"></i> Declined Bookings</h6>
+                        {% for booking in day_declined_bookings %}
+                        <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action list-group-item-danger" style="border-left: 5px solid #dc3545;">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1 text-danger">
+                                    <i class="bi bi-x-circle"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong> - {{ booking.business_name }}
+                                </h5>
+                                <span class="badge bg-danger" style="font-size: 0.9rem;">DECLINED</span>
+                            </div>
+                            <small><i class="bi bi-person-badge"></i> Salesman: {{ booking.salesman.get_full_name }}</small>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                 {% endif %}
                 {% endif %}
             </div>
             {% endif %}
         </div>
     </div>
+    
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-palette"></i> Calendar Legend</h5>
+        </div>
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap gap-3 small">
+                <span class="badge bg-success text-dark p-2 border border-success" style="background: #d4edda !important;">
+                    <i class="bi bi-plus-circle"></i> **Available Slot**
+                </span>
+                <span class="badge bg-primary p-2 border border-primary" style="background: #cce5ff !important;">
+                    <i class="bi bi-check-circle"></i> **Confirmed Booking**
+                </span>
+                <span class="badge bg-warning text-dark p-2 border border-warning" style="background: #fff3cd !important;">
+                    <i class="bi bi-hourglass-split"></i> **Pending Booking**
+                </span>
+                <span class="badge bg-danger p-2 border border-danger" style="background: #f8d7da !important;">
+                    <i class="bi bi-x-circle"></i> **Declined Booking**
+                </span>
 
-    <!-- Enhanced Legend -->
-    <div class="mt-3">
-        <h6 class="mb-2">Legend:</h6>
-        {% if is_salesman %}
-        <span class="badge me-2 mb-2" style="border: 2px solid #17a2b8; background: #d1ecf1; color: #0c5460; font-size: 0.9rem; padding: 8px 12px;">
-            <i class="bi bi-calendar-event"></i> My Appointment
-        </span>
-        {% else %}
-        <span class="badge me-2 mb-2" style="border: 2px solid #28a745; background: #d4edda; color: #155724; font-size: 0.9rem; padding: 8px 12px;">
-            <i class="bi bi-plus-circle"></i> Available Slot
-        </span>
-        <span class="badge me-2 mb-2" style="border: 2px solid #ffc107; background: #fff3cd; color: #856404; font-size: 0.9rem; padding: 8px 12px;">
-            <i class="bi bi-hourglass-split"></i> Pending
-        </span>
-        <span class="badge me-2 mb-2" style="border: 2px solid #007bff; background: #cce5ff; color: #004085; font-size: 0.9rem; padding: 8px 12px;">
-            <i class="bi bi-check-circle"></i> Confirmed
-        </span>
-        <span class="badge me-2 mb-2" style="border: 2px solid #dc3545; background: #f8d7da; color: #721c24; font-size: 0.9rem; padding: 8px 12px;">
-            <i class="bi bi-x-circle"></i> Declined
-        </span>
-        {% endif %}
-        <br>
-        <span class="badge me-2 mb-2" style="background: #17a2b8; color: white; font-size: 0.9rem; padding: 8px 12px;">
-            <i class="bi bi-camera-video"></i> ZOOM
-        </span>
-        <span class="badge me-2 mb-2" style="background: #6f42c1; color: white; font-size: 0.9rem; padding: 8px 12px;">
-            <i class="bi bi-geo-alt"></i> IN-PERSON
-        </span>
+                <span class="badge bg-info p-2" style="background: #17a2b8; color: white !important;">
+                    <i class="bi bi-camera-video"></i> **ZOOM** (Virtual)
+                </span>
+                <span class="badge p-2" style="background: #6f42c1; color: white !important;">
+                    <i class="bi bi-geo-alt"></i> **IN-PERSON**
+                </span>
+            </div>
+        </div>
     </div>
+    
 </div>
-{% endblock %}
-
-{% block extra_css %}
-<style>
-.calendar-table td {
-    padding: 8px;
-    vertical-align: top;
-}
-.calendar-day {
-    min-height: 180px;
-}
-.badge {
-    font-size: 0.75rem;
-}
-.available-slot:hover {
-    background-color: #c3e6cb !important;
-    transform: scale(1.02);
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-.appointment-card:hover {
-    transform: scale(1.02);
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-}
-.card:hover {
-    transform: scale(1.02);
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-}
-.calendar-table {
-    font-size: 0.9rem;
-}
-.list-group-item:hover {
-    box-shadow: 0 3px 6px rgba(0,0,0,0.15);
-}
-</style>
-{% endblock %}
+{% endblock content %}
