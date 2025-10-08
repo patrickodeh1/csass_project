@@ -115,9 +115,9 @@
                                     <div class="appointment-card mb-1 w-100" 
                                         style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid {% if appt.appointment_type == 'zoom' %}#17a2b8{% else %}#6f42c1{% endif %}; background: {% if appt.appointment_type == 'zoom' %}#d1ecf1{% else %}#e2d9f3{% endif %}; padding: 6px 8px; border-radius: 4px;"
                                         onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
-                                        title="Appointment: {{ appt.appointment_time|date:'g:i A' }} with {{ appt.client.get_full_name }}">
+                                        title="Appointment: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.business_name }}">
                                         <div><i class="bi bi-clock"></i> <strong>{{ appt.appointment_time|date:"g:iA" }}</strong></div>
-                                        <div class="text-truncate" style="max-width: 100%;"><i class="bi bi-person"></i> {{ appt.client.first_name }} {{ appt.client.last_name }}</div>
+                                        <div class="text-truncate" style="max-width: 100%;"><i class="bi bi-briefcase"></i> {{ appt.business_name }}</div>
                                         <span class="badge" style="font-size: 0.65rem; {% if appt.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
                                             {% if appt.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
                                         </span>
@@ -133,7 +133,7 @@
                                     {% for slot in day_info.available_slots|slice:":2" %}
                                     <div class="available-slot mb-1 w-100" 
                                         style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #28a745; background: #d4edda; padding: 6px 8px; border-radius: 4px;" 
-                                        onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'"
+                                        onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'"
                                         title="Click to book: {{ slot.time|date:'g:i A' }} with {{ slot.salesman.get_full_name }}">
                                         <div><i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:iA" }}</strong></div>
                                         <div class="text-truncate"><i class="bi bi-person-badge"></i> {{ slot.salesman.first_name }}</div>
@@ -215,7 +215,7 @@
                             onclick="window.location.href='{% url 'booking_detail' appt.id %}'">
                             <div class="card-body py-2 px-2">
                                 <div class="d-block"><i class="bi bi-clock"></i> <strong>{{ appt.appointment_time|date:"g:i A" }}</strong></div>
-                                <small class="d-block text-truncate"><i class="bi bi-person"></i> {{ appt.client.first_name }} {{ appt.client.last_name }}</small>
+                                <small class="d-block text-truncate"><i class="bi bi-briefcase"></i> {{ appt.business_name }}</small>
                                 <span class="badge" style="font-size: 0.65rem; {% if appt.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
                                     {% if appt.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
                                 </span>
@@ -229,7 +229,7 @@
                         <!-- Available slots for Admins/Remote Agents -->
                         {% for slot in day_data.available_slots|slice:":3" %}
                         <div class="card border-success mb-2" style="cursor: pointer; background: #d4edda;" 
-                            onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'">
+                            onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'">
                             <div class="card-body py-2 px-2">
                                 <div class="d-block"><i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:i A" }}</strong></div>
                                 <small class="d-block text-truncate"><i class="bi bi-person-badge"></i> {{ slot.salesman.first_name }}</small>
@@ -304,7 +304,7 @@
                                 {% if appt.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
                             </span>
                         </div>
-                        <p class="mb-1"><i class="bi bi-person"></i> <strong>Client:</strong> {{ appt.client.get_full_name }}</p>
+                        <p class="mb-1"><i class="bi bi-briefcase"></i> <strong>Business:</strong> {{ appt.business_name }}</p>
                         <small>Status: {{ appt.get_status_display }}</small>
                     </a>
                     {% endfor %}
@@ -321,7 +321,7 @@
                 <div class="mb-3">
                     <h6 class="text-muted"><i class="bi bi-plus-circle"></i> Available Time Slots</h6>
                     {% for slot in day_available_slots %}
-                    <a href="{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}" 
+                    <a href="{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}" 
                        class="list-group-item list-group-item-action list-group-item-success" style="border-left: 5px solid #28a745;">
                         <div class="d-flex w-100 justify-content-between">
                             <h5 class="mb-1">
