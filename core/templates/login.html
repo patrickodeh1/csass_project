@@ -9,16 +9,16 @@
             <div class="card shadow">
                 <div class="card-body p-5">
                     <div class="text-center mb-4">
-                        <h2 class="text-primary fw-bold mb-2">RAU</h2>
-                        <p class="text-muted">Welcome to Revenue Acceleration Unit</p>
-                        <p class="small">Sign in to your account</p>
+                        <h2 class="text-primary fw-bold mb-2" style="color: #2C5234 !important; font-size: 2.5rem;">RAU</h2>
+                        <p class="text-muted" style="color: #1E1E1E; font-size: 1.1rem;">Welcome to Revenue Acceleration Unit</p>
+                        <p class="small" style="color: #1E1E1E; font-size: 1rem;">Sign in to your account</p>
                     </div>
 
                     <form method="post">
                         {% csrf_token %}
                         
                         <div class="mb-3">
-                            <label for="{{ form.username.id_for_label }}" class="form-label">Username</label>
+                            <label for="{{ form.username.id_for_label }}" class="form-label" style="color: #1E1E1E; font-weight: 600; font-size: 1rem;">Username</label>
                             {{ form.username }}
                             {% if form.username.errors %}
                             <div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>
@@ -26,7 +26,7 @@
                         </div>
 
                         <div class="mb-3">
-                            <label for="{{ form.password.id_for_label }}" class="form-label">Password</label>
+                            <label for="{{ form.password.id_for_label }}" class="form-label" style="color: #1E1E1E; font-weight: 600; font-size: 1rem;">Password</label>
                             {{ form.password }}
                             {% if form.password.errors %}
                             <div class="text-danger small mt-1">{{ form.password.errors.0 }}</div>

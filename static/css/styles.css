@@ -1,15 +1,117 @@
 /* Custom Styles for CSASS */
 
 :root {
-    --primary: #2563eb;
+    /* New color scheme based on the image */
+    --navy-blue: #0B1522;
+    --white: #FFFFFF;
+    --light-gray: #E6E6E6;
+    --military-green: #2C5234;
+    --brighter-green: #3C693E;
+    --charcoal: #1E1E1E;
+    --steel-blue: #334A63;
+    
+    /* Bootstrap color overrides */
+    --primary: #2C5234;
     --success: #16a34a;
     --warning: #eab308;
     --danger: #dc2626;
-    --info: #0891b2;
+    --info: #334A63;
 }
 
 body {
     background-color: #f3f4f6;
+    color: var(--charcoal);
+}
+
+/* Header and Navigation Styling */
+.navbar-dark {
+    background-color: var(--navy-blue) !important;
+}
+
+.navbar-brand {
+    color: var(--white) !important;
+    font-weight: 700;
+}
+
+.nav-link {
+    color: var(--white) !important;
+}
+
+.nav-link:hover {
+    color: var(--light-gray) !important;
+}
+
+.nav-link.active {
+    color: var(--light-gray) !important;
+    font-weight: 600;
+}
+
+/* Button Styling */
+.btn-primary {
+    background-color: var(--military-green);
+    border-color: var(--military-green);
+    color: var(--white);
+}
+
+.btn-primary:hover {
+    background-color: var(--brighter-green);
+    border-color: var(--brighter-green);
+    color: var(--white);
+}
+
+.btn-outline-primary {
+    color: var(--military-green);
+    border-color: var(--military-green);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--military-green);
+    border-color: var(--military-green);
+    color: var(--white);
+}
+
+/* Card Header Styling */
+.card-header.bg-primary {
+    background-color: var(--navy-blue) !important;
+    color: var(--white) !important;
+}
+
+/* Text Styling */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--charcoal);
+}
+
+.text-primary {
+    color: var(--military-green) !important;
+}
+
+/* Calendar specific improvements for visibility */
+.calendar-table {
+    font-size: 1rem; /* Increased from 0.9rem */
+}
+
+.calendar-table th {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--charcoal);
+    background-color: var(--white);
+}
+
+.calendar-table td {
+    font-size: 1rem; /* Increased for better visibility */
+    color: var(--charcoal);
+}
+
+.calendar-day {
+    font-size: 1.1rem; /* Increased for better visibility */
+}
+
+.appointment-card {
+    font-size: 0.85rem !important; /* Slightly increased from 0.75rem */
+}
+
+.available-slot {
+    font-size: 0.85rem !important; /* Slightly increased from 0.75rem */
 }
 
 /* Navbar Customization */

@@ -6,7 +6,7 @@
 <div class="container-fluid">
     <div class="row mb-4">
         <div class="col">
-            <h2><i class="bi bi-calendar3"></i> Appointment Calendar</h2>
+            <h2 style="color: #1E1E1E; font-size: 2rem; font-weight: 700;"><i class="bi bi-calendar3"></i> Appointment Calendar</h2>
         </div>
     </div>
 
@@ -14,7 +14,7 @@
         <div class="card-body">
             <form method="get" class="row g-3">
                 <div class="col-md-3">
-                    <label class="form-label">View Mode</label>
+                    <label class="form-label" style="color: #1E1E1E; font-weight: 600; font-size: 1rem;">View Mode</label>
                     <select name="view" class="form-select" onchange="this.form.submit()">
                         <option value="month" {% if view_mode == 'month' %}selected{% endif %}>Month</option>
                         <option value="week" {% if view_mode == 'week' %}selected{% endif %}>Week</option>
@@ -23,7 +23,7 @@
                 </div>
                 {% if user.is_staff %}
                 <div class="col-md-3">
-                    <label class="form-label">Salesman</label>
+                    <label class="form-label" style="color: #1E1E1E; font-weight: 600; font-size: 1rem;">Salesman</label>
                     <select name="salesman" class="form-select" onchange="this.form.submit()">
                         <option value="">All Salesmen</option>
                         {% for salesman in salesmen %}
@@ -35,7 +35,7 @@
                 </div>
                 {% endif %}
                 <div class="col-md-3">
-                    <label class="form-label">Type</label>
+                    <label class="form-label" style="color: #1E1E1E; font-weight: 600; font-size: 1rem;">Type</label>
                     <select name="type" class="form-select" onchange="this.form.submit()">
                         <option value="">All Types</option>
                         <option value="zoom" {% if selected_type == 'zoom' %}selected{% endif %}>Zoom</option>
@@ -43,7 +43,7 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Date</label>
+                    <label class="form-label" style="color: #1E1E1E; font-weight: 600; font-size: 1rem;">Date</label>
                     <input type="date" name="date" class="form-control" value="{{ current_date|date:'Y-m-d' }}" onchange="this.form.submit()">
                 </div>
             </form>
@@ -51,10 +51,10 @@
     </div>
 
     <div class="card">
-        <div class="card-header bg-primary text-white">
+        <div class="card-header bg-primary text-white" style="background-color: #0B1522 !important;">
             <div class="row align-items-center">
                 <div class="col">
-                    <h5 class="mb-0">
+                    <h5 class="mb-0" style="color: #FFFFFF; font-size: 1.3rem; font-weight: 600;">
                         {{ start_date|date:"F Y" }}
                         {% if view_mode == 'week' %} - Week of {{ start_date|date:"M d" }}{% endif %}
                         {% if view_mode == 'day' %} - {{ current_date|date:"l, F d, Y" }}{% endif %}
@@ -89,13 +89,13 @@
                 <table class="table table-bordered calendar-table">
                     <thead>
                         <tr>
-                            <th>Sunday</th>
-                            <th>Monday</th>
-                            <th>Tuesday</th>
-                            <th>Wednesday</th>
-                            <th>Thursday</th>
-                            <th>Friday</th>
-                            <th>Saturday</th>
+                            <th style="color: #1E1E1E; font-size: 1.1rem; font-weight: 600; background-color: #FFFFFF;">Sunday</th>
+                            <th style="color: #1E1E1E; font-size: 1.1rem; font-weight: 600; background-color: #FFFFFF;">Monday</th>
+                            <th style="color: #1E1E1E; font-size: 1.1rem; font-weight: 600; background-color: #FFFFFF;">Tuesday</th>
+                            <th style="color: #1E1E1E; font-size: 1.1rem; font-weight: 600; background-color: #FFFFFF;">Wednesday</th>
+                            <th style="color: #1E1E1E; font-size: 1.1rem; font-weight: 600; background-color: #FFFFFF;">Thursday</th>
+                            <th style="color: #1E1E1E; font-size: 1.1rem; font-weight: 600; background-color: #FFFFFF;">Friday</th>
+                            <th style="color: #1E1E1E; font-size: 1.1rem; font-weight: 600; background-color: #FFFFFF;">Saturday</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -104,17 +104,17 @@
                             {% for day_info in week %}
                             <td class="calendar-day" style="height: 180px; vertical-align: top; {% if not day_info.is_current_month %}background-color: #f8f9fa;{% endif %}">
                                 {% if day_info.is_current_month %}
-                                    <div class="fw-bold mb-2" style="font-size: 1.1rem;">{{ day_info.day }}</div>
+                                    <div class="fw-bold mb-2" style="font-size: 1.2rem; color: #1E1E1E; font-weight: 700;">{{ day_info.day }}</div>
                                     
                                     {% if is_salesman %}
                                     {% for appt in day_info.appointments|slice:":3" %}
                                     <div class="appointment-card mb-1 w-100" 
-                                        style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid {% if appt.appointment_type == 'zoom' %}#17a2b8{% else %}#6f42c1{% endif %}; background: {% if appt.appointment_type == 'zoom' %}#d1ecf1{% else %}#e2d9f3{% endif %}; padding: 6px 8px; border-radius: 4px;"
+                                        style="cursor: pointer; font-size: 0.9rem; text-align: left; border: 2px solid {% if appt.appointment_type == 'zoom' %}#17a2b8{% else %}#6f42c1{% endif %}; background: {% if appt.appointment_type == 'zoom' %}#d1ecf1{% else %}#e2d9f3{% endif %}; padding: 8px 10px; border-radius: 4px;"
                                         onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
                                         title="Appointment: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
-                                        <div><i class="bi bi-clock"></i> <strong>{{ appt.appointment_time|date:"g:iA" }}</strong></div>
-                                        <div class="text-truncate" style="max-width: 100%;"><i class="bi bi-briefcase"></i> {{ appt.client.business_name }}</div>
-                                        <span class="badge" style="font-size: 0.65rem; {% if appt.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
+                                        <div style="color: #1E1E1E; font-weight: 600;"><i class="bi bi-clock"></i> <strong>{{ appt.appointment_time|date:"g:iA" }}</strong></div>
+                                        <div class="text-truncate" style="max-width: 100%; color: #1E1E1E; font-weight: 500;"><i class="bi bi-briefcase"></i> {{ appt.client.business_name }}</div>
+                                        <span class="badge" style="font-size: 0.75rem; {% if appt.appointment_type == 'zoom' %}background: #17a2b8; color: white;{% else %}background: #6f42c1; color: white;{% endif %}">
                                             {% if appt.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
                                         </span>
                                     </div>
@@ -129,12 +129,12 @@
                                     {# Remote agents: show available slots only, no bookings #}
                                     {% for slot in day_info.available_slots|slice:":3" %}
                                     <div class="available-slot mb-1 w-100" 
-                                        style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #28a745; background: #d4edda; padding: 6px 8px; border-radius: 4px;" 
+                                        style="cursor: pointer; font-size: 0.9rem; text-align: left; border: 2px solid #28a745; background: #d4edda; padding: 8px 10px; border-radius: 4px;" 
                                         onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'"
                                         title="Click to book: {{ slot.time|date:'g:i A' }} with {{ slot.salesman.get_full_name }}">
-                                        <div><i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:iA" }}</strong></div>
-                                        <div class="text-truncate"><i class="bi bi-person-badge"></i> {{ slot.salesman.first_name }}</div>
-                                        <span class="badge" style="font-size: 0.65rem; background: #28a745; color: white;">AVAILABLE</span>
+                                        <div style="color: #1E1E1E; font-weight: 600;"><i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:iA" }}</strong></div>
+                                        <div class="text-truncate" style="color: #1E1E1E; font-weight: 500;"><i class="bi bi-person-badge"></i> {{ slot.salesman.first_name }}</div>
+                                        <span class="badge" style="font-size: 0.75rem; background: #28a745; color: white;">AVAILABLE</span>
                                     </div>
                                     {% endfor %}
                                     {% if day_info.available_slots|length > 3 %}
@@ -458,18 +458,18 @@
     
     {% if is_remote_agent %}
     <div class="card mt-4">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-palette"></i> Calendar Legend</h5>
+        <div class="card-header" style="background-color: #0B1522; color: #FFFFFF;">
+            <h5 class="mb-0" style="color: #FFFFFF; font-size: 1.2rem; font-weight: 600;"><i class="bi bi-palette"></i> Calendar Legend</h5>
         </div>
         <div class="card-body py-2">
             <div class="d-flex flex-wrap gap-3 small">
-                <span class="badge bg-success text-dark p-2 border border-success" style="background: #d4edda !important;">
+                <span class="badge bg-success text-dark p-2 border border-success" style="background: #d4edda !important; color: #1E1E1E !important; font-weight: 600;">
                     <i class="bi bi-plus-circle"></i> **Available Slot**
                 </span>
-                <span class="badge bg-info p-2" style="background: #17a2b8; color: white !important;">
+                <span class="badge bg-info p-2" style="background: #334A63; color: white !important; font-weight: 600;">
                     <i class="bi bi-camera-video"></i> **ZOOM** (Virtual)
                 </span>
-                <span class="badge p-2" style="background: #6f42c1; color: white !important;">
+                <span class="badge p-2" style="background: #2C5234; color: white !important; font-weight: 600;">
                     <i class="bi bi-geo-alt"></i> **IN-PERSON**
                 </span>
             </div>
@@ -477,15 +477,15 @@
     </div>
     {% elif is_salesman %}
     <div class="card mt-4">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-palette"></i> Calendar Legend</h5>
+        <div class="card-header" style="background-color: #0B1522; color: #FFFFFF;">
+            <h5 class="mb-0" style="color: #FFFFFF; font-size: 1.2rem; font-weight: 600;"><i class="bi bi-palette"></i> Calendar Legend</h5>
         </div>
         <div class="card-body py-2">
             <div class="d-flex flex-wrap gap-3 small">
-                <span class="badge bg-info p-2" style="background: #17a2b8; color: white !important;">
+                <span class="badge bg-info p-2" style="background: #334A63; color: white !important; font-weight: 600;">
                     <i class="bi bi-camera-video"></i> **ZOOM** (Virtual)
                 </span>
-                <span class="badge p-2" style="background: #6f42c1; color: white !important;">
+                <span class="badge p-2" style="background: #2C5234; color: white !important; font-weight: 600;">
                     <i class="bi bi-geo-alt"></i> **IN-PERSON**
                 </span>
             </div>
@@ -493,27 +493,27 @@
     </div>
     {% else %}
     <div class="card mt-4">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-palette"></i> Calendar Legend</h5>
+        <div class="card-header" style="background-color: #0B1522; color: #FFFFFF;">
+            <h5 class="mb-0" style="color: #FFFFFF; font-size: 1.2rem; font-weight: 600;"><i class="bi bi-palette"></i> Calendar Legend</h5>
         </div>
         <div class="card-body py-2">
             <div class="d-flex flex-wrap gap-3 small">
-                <span class="badge bg-success text-dark p-2 border border-success" style="background: #d4edda !important;">
+                <span class="badge bg-success text-dark p-2 border border-success" style="background: #d4edda !important; color: #1E1E1E !important; font-weight: 600;">
                     <i class="bi bi-plus-circle"></i> **Available Slot**
                 </span>
-                <span class="badge bg-primary p-2 border border-primary" style="background: #cce5ff !important;">
+                <span class="badge bg-primary p-2 border border-primary" style="background: #cce5ff !important; color: #1E1E1E !important; font-weight: 600;">
                     <i class="bi bi-check-circle"></i> **Confirmed Booking**
                 </span>
-                <span class="badge bg-warning text-dark p-2 border border-warning" style="background: #fff3cd !important;">
+                <span class="badge bg-warning text-dark p-2 border border-warning" style="background: #fff3cd !important; color: #1E1E1E !important; font-weight: 600;">
                     <i class="bi bi-hourglass-split"></i> **Pending Booking**
                 </span>
-                <span class="badge bg-danger p-2 border border-danger" style="background: #f8d7da !important;">
+                <span class="badge bg-danger p-2 border border-danger" style="background: #f8d7da !important; color: #1E1E1E !important; font-weight: 600;">
                     <i class="bi bi-x-circle"></i> **Declined Booking**
                 </span>
-                <span class="badge bg-info p-2" style="background: #17a2b8; color: white !important;">
+                <span class="badge bg-info p-2" style="background: #334A63; color: white !important; font-weight: 600;">
                     <i class="bi bi-camera-video"></i> **ZOOM** (Virtual)
                 </span>
-                <span class="badge p-2" style="background: #6f42c1; color: white !important;">
+                <span class="badge p-2" style="background: #2C5234; color: white !important; font-weight: 600;">
                     <i class="bi bi-geo-alt"></i> **IN-PERSON**
                 </span>
             </div>
