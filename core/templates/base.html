@@ -71,25 +71,15 @@
                         </li>
                     {% endif %}
 
-                    {% if user|has_group:'salesman' or user.is_staff %}
-                        <li class="nav-item">
-                            <a class="nav-link text-white {% if request.resolver_match.url_name == 'pending_bookings' %}active fw-semibold{% endif %}" 
-                            href="{% url 'pending_bookings' %}">
-                                <i class="bi bi-hourglass-split"></i> 
-                                {% if user.is_staff %}Pending Approvals{% else %}My Pending{% endif %}
-                                <span class="badge bg-danger ms-1" id="pending-count"></span>
-                            </a>
-                        </li>
-                    {% endif %}
-
                     {% if user.is_staff %}
                         <li class="nav-item">
                             <a class="nav-link text-white {% if request.resolver_match.url_name == 'pending_bookings' %}active fw-semibold{% endif %}" 
                             href="{% url 'pending_bookings' %}">
                                 <i class="bi bi-hourglass-split"></i> Pending Approvals
-                                <span class="badge bg-danger ms-2" id="pending-count"></span>
+                                <span class="badge bg-danger ms-1" id="pending-count"></span>
                             </a>
                         </li>
+                    
                     {% elif user|has_group:'salesman' %}
                         <li class="nav-item">
                             <a class="nav-link text-white {% if request.resolver_match.url_name == 'salesman_pending_bookings' %}active fw-semibold{% endif %}" 
