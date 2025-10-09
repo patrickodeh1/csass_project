@@ -286,7 +286,7 @@ def calendar_view(request):
     bookings = Booking.objects.filter(
         appointment_date__gte=start_date,
         appointment_date__lte=end_date
-    ).select_related('client', 'salesman', 'created_by')
+    ).select_related('client', 'salesman', 'created_by', 'approved_by', 'declined_by', 'canceled_by', 'updated_by')
     
     if is_salesman and not is_admin:
         # Salesmen see only their own bookings
@@ -612,7 +612,7 @@ def pending_bookings_view(request):
         messages.error(request, "You don't have permission to view pending bookings.")
         return redirect('calendar')
     
-    bookings = Booking.objects.select_related('client', 'salesman', 'created_by')
+    bookings = Booking.objects.select_related('client', 'salesman', 'created_by', 'approved_by', 'declined_by', 'canceled_by', 'updated_by')
     
     # Filter based on user role
     if is_salesman and not is_admin:
@@ -662,7 +662,7 @@ def salesman_pending_bookings_view(request):
     # Only show bookings for this salesman
     bookings = Booking.objects.filter(
         salesman=request.user
-    ).select_related('client', 'salesman', 'created_by')
+    ).select_related('client', 'salesman', 'created_by', 'approved_by', 'declined_by', 'canceled_by', 'updated_by')
     
     if status_filter == 'pending':
         bookings = bookings.filter(status='pending')
@@ -939,8 +939,6 @@ def commissions_view(request):
         'payroll_period': payroll_period,
         'available_weeks': available_weeks,
     }
-    
-    return render(request, 'commissions.html', context)
     
     return render(request, 'commissions.html', context)
 # ============================================================

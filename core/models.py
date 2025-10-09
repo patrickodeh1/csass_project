@@ -270,10 +270,6 @@ class Booking(models.Model):
         appt_datetime = datetime.combine(self.appointment_date, self.appointment_time)
         return timezone.make_aware(appt_datetime) < timezone.now()
     
-    def counts_for_commission(self):
-        """Check if booking counts for commission"""
-        return self.status in ['confirmed', 'completed']
-    
     def save(self, *args, **kwargs):
              # Set commission amount if not set
         if not self.commission_amount:
@@ -507,4 +503,12 @@ class AvailableTimeSlot(models.Model):
     
     def is_time_in_slot(self, time_obj):
         """Check if a given time falls within this slot"""
-        return self.start_time
+        # Since slots are 15 minutes long, check if the time matches the start time
+        # or falls within the 15-minute window
+        from datetime import timedelta
+        
+        # Calculate end time (15 minutes after start)
+        end_time = (datetime.combine(date.min, self.start_time) + timedelta(minutes=15)).time()
+        
+        # Check if the given time is within the slot range
+        return self.start_time <= time_obj < end_time
