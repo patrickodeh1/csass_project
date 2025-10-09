@@ -28,6 +28,7 @@ urlpatterns = [
     path('admiin/bookings/<int:pk>/approve/', views.booking_approve, name='booking_approve'),
     path('admiin/bookings/<int:pk>/decline/', views.booking_decline, name='booking_decline'),
     
+    
     # Commissions
     path('commissions/', views.commissions_view, name='commissions'),
     

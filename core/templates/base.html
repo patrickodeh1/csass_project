@@ -22,12 +22,17 @@
             --bs-dark: #0B1522;
             --bs-light: #E6E6E6;
         }
-        .navbar-dark { background-color: #0B1522 !important; }
+        .navbar-dark { 
+            background: linear-gradient(to right, #1E572E, #70C074);
+        }
         .btn-primary { background-color: #2C5234; border-color: #2C5234; }
         .btn-primary:hover { background-color: #3C693E; border-color: #3C693E; }
         .text-primary { color: #2C5234 !important; }
         .bg-primary { background-color: #0B1522 !important; }
         .card-header.bg-primary { background-color: #0B1522 !important; }
+        .card-header.bg-dark { 
+            background: linear-gradient(to right, #1E572E, #70C074) !important;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
