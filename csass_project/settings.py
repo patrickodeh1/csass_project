@@ -71,12 +71,7 @@ DATABASES = {
 # CUSTOM USER MODEL - CRITICAL SETTING
 AUTH_USER_MODEL = 'core.User'
 
-AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 8}},
-    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
-]
+AUTH_PASSWORD_VALIDATORS = []
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = config('TIMEZONE', default='UTC')
@@ -117,5 +112,4 @@ SESSION_SAVE_EVERY_REQUEST = True
 MAX_LOGIN_ATTEMPTS = 5
 
 EMAIL_TIMEOUT = 5
-AUTH_PASSWORD_VALIDATORS = []
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False

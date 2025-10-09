@@ -19,7 +19,8 @@ from .forms import (LoginForm, BookingForm, CancelBookingForm,
                     PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
 from .decorators import group_required, admin_required, remote_agent_required
 from .utils import (get_current_payroll_period, get_payroll_periods, send_booking_confirmation,
-                    send_booking_cancellation, check_booking_conflicts)
+                    send_booking_cancellation, check_booking_conflicts, send_booking_approved_notification,
+                    send_booking_declined_notification)
 from django.utils.crypto import get_random_string
 from calendar import monthcalendar
 import logging
@@ -1013,110 +1014,9 @@ def commissions_view(request):
     }
     
     return render(request, 'commissions.html', context)
-    
-    return render(request, 'commissions.html', context)
 # ============================================================
-# Availability Views
+# Availability Views - REMOVED (Unavailability model not implemented)
 # ============================================================
-
-@login_required
-@group_required('salesman', 'admin')
-def availability_view(request):
-    # Determine if user is admin
-    is_admin = request.user.is_staff
-    
-    # Get salesman parameter (admin only)
-    if is_admin:
-        salesman_id = request.GET.get('salesman')
-        if salesman_id:
-            salesman = get_object_or_404(User, pk=salesman_id, is_active_salesman=True)
-        else:
-            salesman = request.user
-    else:
-        salesman = request.user
-    
-    # Get unavailability blocks
-    blocks = Unavailability.objects.filter(
-        salesman=salesman,
-        end_date__gte=timezone.now().date()
-    ).order_by('start_date', 'start_time')
-    
-    # Get all salesmen for admin dropdown
-    salesmen = None
-    if is_admin:
-        salesmen = User.objects.filter(
-            is_active_salesman=True,
-            is_active=True
-        )
-    
-    context = {
-        'blocks': blocks,
-        'salesman': salesman,
-        'salesmen': salesmen,
-        'is_admin': is_admin,
-    }
-    
-    return render(request, 'availability.html', context)
-
-@login_required
-@group_required('salesman', 'admin')
-def availability_create(request):
-    is_admin = request.user.is_staff
-    
-    if request.method == 'POST':
-        form = UnavailabilityForm(request.POST, request=request, is_admin=is_admin)
-        if form.is_valid():
-            unavailability = form.save()
-            messages.success(request, 'Unavailability block created successfully!')
-            return redirect('availability')
-    else:
-        initial = {}
-        if not is_admin:
-            initial['salesman'] = request.user
-        elif request.GET.get('salesman'):
-            initial['salesman'] = request.GET.get('salesman')
-        
-        form = UnavailabilityForm(initial=initial, request=request, is_admin=is_admin)
-    
-    return render(request, 'availability_form.html', {'form': form, 'title': 'Add Unavailability'})
-
-@login_required
-@group_required('salesman', 'admin')
-def availability_edit(request, pk):
-    block = get_object_or_404(Unavailability, pk=pk)
-    is_admin = request.user.is_staff
-    
-    # Check permissions
-    if not is_admin and block.salesman != request.user:
-        return HttpResponseForbidden("You don't have permission to edit this block.")
-    
-    if request.method == 'POST':
-        form = UnavailabilityForm(request.POST, instance=block, request=request, is_admin=is_admin)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Unavailability block updated successfully!')
-            return redirect('availability')
-    else:
-        form = UnavailabilityForm(instance=block, request=request, is_admin=is_admin)
-    
-    return render(request, 'availability_form.html', {'form': form, 'title': 'Edit Unavailability', 'block': block})
-
-@login_required
-@group_required('salesman', 'admin')
-def availability_delete(request, pk):
-    block = get_object_or_404(Unavailability, pk=pk)
-    is_admin = request.user.is_staff
-    
-    # Check permissions
-    if not is_admin and block.salesman != request.user:
-        return HttpResponseForbidden("You don't have permission to delete this block.")
-    
-    if request.method == 'POST':
-        block.delete()
-        messages.success(request, 'Unavailability block deleted successfully!')
-        return redirect('availability')
-    
-    return render(request, 'availability_delete.html', {'block': block})
 
 # ============================================================
 # Payroll Views (Admin Only)

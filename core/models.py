@@ -281,10 +281,6 @@ class Booking(models.Model):
         appt_datetime = datetime.combine(self.appointment_date, self.appointment_time)
         return timezone.make_aware(appt_datetime) < timezone.now()
     
-    def counts_for_commission(self):
-        """Check if booking counts for commission"""
-        return self.status in ['confirmed', 'completed']
-    
     def save(self, *args, **kwargs):
              # Set commission amount if not set
         if not self.commission_amount:
@@ -311,9 +307,6 @@ class Booking(models.Model):
         # Update the original status for next save
         self.__original_status = self.status
         # ---------------------------------------------------------------------
-    
-    def __str__(self):
-        return f"{self.client} with {self.salesman.get_full_name()} on {self.appointment_date}"
 
     def _handle_slot_activation(self, new_status):
         """Logic to activate or deactivate the associated AvailableTimeSlot."""
@@ -335,16 +328,6 @@ class Booking(models.Model):
                 slot.is_active = True
                 slot.save(update_fields=['is_active'])
 
-    def conflicts_with_booking(self):
-        """Check if this unavailability conflicts with any confirmed bookings"""
-        return Booking.objects.filter(
-            salesman=self.salesman,
-            status='confirmed',
-            appointment_date__gte=self.start_date,
-            appointment_date__lte=self.end_date,
-            appointment_time__gte=self.start_time,
-            appointment_time__lt=self.end_time
-        ).exists()
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Check if the instance has a primary key (meaning it's loaded from DB)

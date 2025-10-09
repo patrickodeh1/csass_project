@@ -4,10 +4,10 @@ from .models import (User, Client, Booking,
                      SystemConfig, AuditLog, AvailableTimeSlot)
 
 @admin.register(User)
-class User(admin.ModelAdmin):
+class UserAdmin(admin.ModelAdmin):
     list_display = ['username', 'employee_id', 'phone_number', 'is_active_salesman', 'hire_date']
     list_filter = ['is_active_salesman', 'hire_date']
-    search_fields = ['user__first_name', 'user__last_name', 'employee_id', 'phone_number']
+    search_fields = ['first_name', 'last_name', 'employee_id', 'phone_number']
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
