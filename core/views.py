@@ -599,7 +599,6 @@ def booking_edit(request, pk):
     return render(request, 'booking_form.html', {'form': form, 'title': 'Edit Booking', 'booking': booking})
 
 @login_required
-@admin_required
 def pending_bookings_view(request):
     """Admin view to see all pending bookings requiring approval"""
     status_filter = request.GET.get('status', 'pending')
@@ -635,7 +634,6 @@ def pending_bookings_view(request):
 
 
 @login_required
-@admin_required
 def booking_approve(request, pk):
     """Approve a pending booking"""
     booking = get_object_or_404(Booking, pk=pk)
@@ -683,9 +681,9 @@ def booking_approve(request, pk):
     
     return render(request, 'booking_approve.html', {'booking': booking})
 
-@login_required
+"""@login_required
 def salesman_booking_approve(request, pk):
-    """Salesman approve their own pending booking"""
+    #Salesman approve their own pending booking
     booking = get_object_or_404(Booking, pk=pk)
     
     # Check if user is the salesman for this booking
@@ -734,7 +732,7 @@ def salesman_booking_approve(request, pk):
         
         return redirect('salesman_pending_bookings')
     
-    return render(request, 'salesman_booking_approve.html', {'booking': booking})
+    return render(request, 'salesman_booking_approve.html', {'booking': booking})"""
 
 @login_required
 def booking_cancel(request, pk):
@@ -777,7 +775,6 @@ def booking_cancel(request, pk):
     return render(request, 'booking_cancel.html', {'form': form, 'booking': booking})
 
 @login_required
-@admin_required
 def booking_decline(request, pk):
     """Decline a pending booking"""
     booking = get_object_or_404(Booking, pk=pk)

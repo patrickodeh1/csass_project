@@ -95,7 +95,7 @@
                         <a href="{% url 'calendar' %}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left"></i> Back to Calendar
                         </a>
-                        {% if booking.status == 'pending' and request.user.is_staff %}
+                        {% if booking.status == 'pending' %} <!--and request.user.is_staff-->
                         <a href="{% url 'booking_decline' booking.id %}" class="btn btn-outline-danger">
                             <i class="bi bi-x-circle"></i> Decline
                         </a>
