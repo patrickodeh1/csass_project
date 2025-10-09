@@ -16,7 +16,7 @@
                         <div class="mt-3">
                             <p class="mb-1"><strong>Salesman:</strong> {{ timeslot.salesman.get_full_name }}</p>
                             <p class="mb-1"><strong>Day:</strong> {{ timeslot.get_day_of_week_display }}</p>
-                            <p class="mb-1"><strong>Time:</strong> {{ timeslot.start_time|date:"g:i A" }} - {{ timeslot.end_time|date:"g:i A" }}</p>
+                            <p class="mb-1"><strong>Time:</strong> {{ timeslot.start_time|date:"g:i A" }} <!-- {{ timeslot.end_time|date:"g:i A" }}</p>-->
                             <p class="mb-0"><strong>Status:</strong> 
                                 {% if timeslot.is_active %}
                                 <span class="badge bg-success">Active</span>

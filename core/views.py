@@ -447,24 +447,23 @@ def booking_create(request):
     slot_salesman_id = request.GET.get('salesman')
     slot_date_str = request.GET.get('date')
     start_time_str = request.GET.get('start_time')
-    end_time_str = request.GET.get('end_time')
+    #end_time_str = request.GET.get('end_time')
     slot_type = request.GET.get('type')
     
     # --- Time and Duration Calculation (Existing Logic) ---
     if slot_date_str:
         initial['appointment_date'] = slot_date_str
 
-    if start_time_str and end_time_str:
+    if start_time_str:
         try:
             # Convert time strings to datetime objects
             t1 = datetime.strptime(start_time_str, '%H:%M')
-            t2 = datetime.strptime(end_time_str, '%H:%M')
             
             # Pass a proper time object to the form
             initial['appointment_time'] = t1.time()
 
             # Calculate duration from timeslot start/end times
-            delta = datetime.combine(date.min, t2.time()) - datetime.combine(date.min, t1.time())
+            delta = datetime.combine(date.min, 15) - datetime.combine(date.min, t1.time())
             duration_in_minutes = int(delta.total_seconds() / 60)
             # Ensure minimum 15 minutes
             duration_in_minutes = max(15, duration_in_minutes)

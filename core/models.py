@@ -256,18 +256,7 @@ class Booking(models.Model):
         """Check if booking can be declined"""
         return self.status == 'pending'
 
-    def get_end_time(self):
-        """Calculate end time based on duration"""
-        dt = datetime.combine(self.appointment_date, self.appointment_time)
-        end_dt = dt + timedelta(minutes=self.duration_minutes)
-        return end_dt.time()
-    
-    def get_buffer_end_time(self):
-        """Calculate when buffer period ends"""
-        config = SystemConfig.get_config()
-        dt = datetime.combine(self.appointment_date, self.appointment_time)
-        buffer_dt = dt + timedelta(minutes=self.duration_minutes + config.buffer_time_minutes)
-        return buffer_dt.time()
+   
     
     def is_editable(self):
         """Check if booking can be edited"""
@@ -344,7 +333,6 @@ class Booking(models.Model):
             appointment_date__gte=self.start_date,
             appointment_date__lte=self.end_date,
             appointment_time__gte=self.start_time,
-            appointment_time__lt=self.end_time
         ).exists()
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -500,7 +488,6 @@ class AvailableTimeSlot(models.Model):
     salesman = models.ForeignKey(User, on_delete=models.CASCADE, related_name='available_timeslots')
     date = models.DateField(null=True)
     start_time = models.TimeField()
-    end_time = models.TimeField()
     appointment_type = models.CharField(
         max_length=20, 
         choices=APPOINTMENT_TYPE_CHOICES,
@@ -517,8 +504,8 @@ class AvailableTimeSlot(models.Model):
         ]
     
     def __str__(self):
-        return f"{self.salesman.get_full_name()} - {self.date.strftime('%b %d, %Y')} {self.start_time}-{self.end_time} ({self.get_appointment_type_display()})"
+        return f"{self.salesman.get_full_name()} - {self.date.strftime('%b %d, %Y')} {self.start_time} ({self.get_appointment_type_display()})"
     
     def is_time_in_slot(self, time_obj):
         """Check if a given time falls within this slot"""
-        return self.start_time <= time_obj < self.end_time
+        return self.start_time

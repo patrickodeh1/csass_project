@@ -431,7 +431,7 @@ class BookingForm(forms.ModelForm):
             
             if not time_is_valid:
                 available_times = ", ".join([
-                    f"{slot.start_time.strftime('%I:%M %p')}-{slot.end_time.strftime('%I:%M %p')}" 
+                    f"{slot.start_time.strftime('%I:%M %p')}" #-{slot.end_time.strftime('%I:%M %p')}" 
                     for slot in available_slots
                 ])
                 raise forms.ValidationError(
@@ -598,12 +598,11 @@ class SystemConfigForm(forms.ModelForm):
 class AvailableTimeSlotForm(forms.ModelForm):
     class Meta:
         model = AvailableTimeSlot
-        fields = ['salesman', 'date', 'start_time', 'end_time', 'appointment_type', 'is_active']
+        fields = ['salesman', 'date', 'start_time', 'appointment_type', 'is_active']
         widgets = {
             'salesman': forms.Select(attrs={'class': 'form-control'}),
             'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'start_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
-            'end_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
             'appointment_type': forms.Select(attrs={'class': 'form-control'}),
         }
     
@@ -628,23 +627,18 @@ class AvailableTimeSlotForm(forms.ModelForm):
         
         # Add help text
         self.fields['start_time'].help_text = 'Format: HH:MM (24-hour)'
-        self.fields['end_time'].help_text = 'Format: HH:MM (24-hour)'
     
     def clean(self):
         cleaned_data = super().clean()
         start_time = cleaned_data.get('start_time')
-        end_time = cleaned_data.get('end_time')
         salesman = cleaned_data.get('salesman')
         date = cleaned_data.get('date')
         appointment_type = cleaned_data.get('appointment_type')
         
-        # Validate time range
-        if start_time and end_time:
-            if start_time >= end_time:
-                raise forms.ValidationError("End time must be after start time")
+    
         
         # Check for overlapping slots for the same salesman, day, and type
-        if salesman and date is not None and start_time and end_time and appointment_type:
+        if salesman and date is not None and start_time and appointment_type:
             overlapping = AvailableTimeSlot.objects.filter(
                 salesman=salesman,
                 date=date,
@@ -657,11 +651,11 @@ class AvailableTimeSlotForm(forms.ModelForm):
                 overlapping = overlapping.exclude(pk=self.instance.pk)
             
             # Check for time overlap
-            for slot in overlapping:
+            """for slot in overlapping:
                 if (start_time < slot.end_time and end_time > slot.start_time):
                     raise forms.ValidationError(
                         f"This time slot overlaps with an existing {appointment_type} slot: "
                         f"{slot.start_time.strftime('%I:%M %p')} - {slot.end_time.strftime('%I:%M %p')}"
                     )
-        
+        """
         return cleaned_data
