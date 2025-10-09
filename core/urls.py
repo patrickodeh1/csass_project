@@ -28,11 +28,17 @@ urlpatterns = [
     path('bookings/<int:pk>/approve/', views.booking_approve, name='booking_approve'),
     path('bookings/<int:pk>/decline/', views.booking_decline, name='booking_decline'),
     
+    # Booking Approvals (Salesman)
+    path('salesman/bookings/pending/', views.salesman_pending_bookings_view, name='salesman_pending_bookings'),
+    path('salesman/bookings/<int:pk>/approve/', views.salesman_booking_approve, name='salesman_booking_approve'),
+    path('salesman/bookings/<int:pk>/decline/', views.salesman_booking_decline, name='salesman_booking_decline'),
+    
     
     # Commissions
     path('commissions/', views.commissions_view, name='commissions'),
     
     path('pending-count/', views.pending_bookings_count_api, name='pending_count_api'),
+    path('salesman-pending-count/', views.salesman_pending_bookings_count_api, name='salesman_pending_count_api'),
 
  # Time Slots (Admin)
     path('admiin/timeslots/', views.timeslots_view, name='timeslots'),

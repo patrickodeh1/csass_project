@@ -76,8 +76,26 @@
                             <a class="nav-link text-white {% if request.resolver_match.url_name == 'pending_bookings' %}active fw-semibold{% endif %}" 
                             href="{% url 'pending_bookings' %}">
                                 <i class="bi bi-hourglass-split"></i> 
-                                {% if user.is_staff %}Pending Approvals{% else %}My Pending Bookings{% endif %}
+                                {% if user.is_staff %}Pending Approvals{% else %}My Pending{% endif %}
+                                <span class="badge bg-danger ms-1" id="pending-count"></span>
+                            </a>
+                        </li>
+                    {% endif %}
+
+                    {% if user.is_staff %}
+                        <li class="nav-item">
+                            <a class="nav-link text-white {% if request.resolver_match.url_name == 'pending_bookings' %}active fw-semibold{% endif %}" 
+                            href="{% url 'pending_bookings' %}">
+                                <i class="bi bi-hourglass-split"></i> Pending Approvals
                                 <span class="badge bg-danger ms-2" id="pending-count"></span>
+                            </a>
+                        </li>
+                    {% elif user|has_group:'salesman' %}
+                        <li class="nav-item">
+                            <a class="nav-link text-white {% if request.resolver_match.url_name == 'salesman_pending_bookings' %}active fw-semibold{% endif %}" 
+                            href="{% url 'salesman_pending_bookings' %}">
+                                <i class="bi bi-hourglass-split"></i> My Pending Bookings
+                                <span class="badge bg-danger ms-2" id="salesman-pending-count"></span>
                             </a>
                         </li>
                     {% endif %}
@@ -93,9 +111,6 @@
                             </a></li>
                             <li><a class="dropdown-item" href="{% url 'users' %}">
                                 <i class="bi bi-people"></i> Users
-                            </a></li>
-                            <li><a class="dropdown-item" href="{% url 'timeslots' %}">
-                                <i class="bi bi-clock-history"></i> Available Time Slots
                             </a></li>
                             <li><a class="dropdown-item" href="{% url 'settings' %}">
                                 <i class="bi bi-sliders"></i> System Settings
@@ -165,6 +180,42 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     {% load static %}
     <script src="{% static 'js/main.js' %}"></script>
+    
+    {% if user.is_authenticated %}
+    <script>
+    // Auto-refresh pending count every 30 seconds
+    setInterval(function() {
+        // Update admin pending count
+        fetch('/pending-count/')
+            .then(response => response.json())
+            .then(data => {
+                const badge = document.getElementById('pending-count');
+                if (badge && data.count > 0) {
+                    badge.textContent = data.count;
+                    badge.style.display = 'inline';
+                } else if (badge) {
+                    badge.style.display = 'none';
+                }
+            });
+        
+        // Update salesman pending count
+        {% if user|has_group:'salesman' and not user.is_staff %}
+        fetch('/salesman-pending-count/')
+            .then(response => response.json())
+            .then(data => {
+                const badge = document.getElementById('salesman-pending-count');
+                if (badge && data.count > 0) {
+                    badge.textContent = data.count;
+                    badge.style.display = 'inline';
+                } else if (badge) {
+                    badge.style.display = 'none';
+                }
+            });
+        {% endif %}
+    }, 30000);
+    </script>
+    {% endif %}
+    
     {% block extra_js %}{% endblock %}
 </body>
 </html>

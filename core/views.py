@@ -605,21 +605,27 @@ def booking_edit(request, pk):
     return render(request, 'booking_form.html', {'form': form, 'title': 'Edit Booking', 'booking': booking})
 
 @login_required
-@group_required('admin', 'salesman')
 def pending_bookings_view(request):
-    """View to see pending bookings - Admin sees all, Salesman sees only their own"""
+    """View to see pending bookings - Admin sees all, Salesman sees only theirs"""
     status_filter = request.GET.get('status', 'pending')
+    
+    # Determine user role
+    is_admin = request.user.is_staff
+    is_salesman = request.user.groups.filter(name='salesman').exists()
+    
+    # Check if user has permission
+    if not (is_admin or is_salesman):
+        messages.error(request, "You don't have permission to view pending bookings.")
+        return redirect('calendar')
     
     bookings = Booking.objects.select_related('client', 'salesman', 'created_by')
     
     # Filter based on user role
-    is_admin = request.user.is_staff
-    is_salesman = request.user.groups.filter(name='salesman').exists()
-    
     if is_salesman and not is_admin:
         # Salesmen only see bookings assigned to them
         bookings = bookings.filter(salesman=request.user)
     
+    # Apply status filter
     if status_filter == 'pending':
         bookings = bookings.filter(status='pending')
     elif status_filter == 'declined':
@@ -648,26 +654,63 @@ def pending_bookings_view(request):
         'pending_count': pending_count,
         'declined_count': declined_count,
         'is_salesman': is_salesman and not is_admin,
+        'is_admin': is_admin,
     }
     
     return render(request, 'pending_bookings.html', context)
 
+@login_required
+@group_required('salesman')
+def salesman_pending_bookings_view(request):
+    """Salesman view to see their own pending bookings requiring approval"""
+    status_filter = request.GET.get('status', 'pending')
+    
+    # Only show bookings for this salesman
+    bookings = Booking.objects.filter(
+        salesman=request.user
+    ).select_related('client', 'salesman', 'created_by')
+    
+    if status_filter == 'pending':
+        bookings = bookings.filter(status='pending')
+    elif status_filter == 'declined':
+        bookings = bookings.filter(status='declined')
+    elif status_filter == 'all':
+        bookings = bookings.filter(status__in=['pending', 'declined', 'confirmed'])
+    
+    bookings = bookings.order_by('-created_at')
+    
+    # Pagination
+    paginator = Paginator(bookings, 25)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Get counts for this salesman only
+    pending_count = Booking.objects.filter(salesman=request.user, status='pending').count()
+    declined_count = Booking.objects.filter(salesman=request.user, status='declined').count()
+    
+    context = {
+        'page_obj': page_obj,
+        'status_filter': status_filter,
+        'pending_count': pending_count,
+        'declined_count': declined_count,
+    }
+    
+    return render(request, 'salesman_pending_bookings.html', context)
+
 
 @login_required
-@group_required('admin', 'salesman')
 def booking_approve(request, pk):
-    """Approve a pending booking - Admin can approve any, Salesman can approve their own"""
+    """Approve a pending booking - Admin or assigned Salesman"""
     booking = get_object_or_404(Booking, pk=pk)
     
     # Check permissions
     is_admin = request.user.is_staff
     is_salesman = request.user.groups.filter(name='salesman').exists()
     
-    if is_salesman and not is_admin:
-        # Salesmen can only approve their own bookings
-        if booking.salesman != request.user:
-            messages.error(request, 'You can only approve your own bookings.')
-            return redirect('pending_bookings')
+    # Only admin or the assigned salesman can approve
+    if not is_admin and not (is_salesman and booking.salesman == request.user):
+        messages.error(request, "You don't have permission to approve this booking.")
+        return redirect('pending_bookings')
     
     if not booking.can_be_approved():
         messages.error(request, 'This booking cannot be approved.')
@@ -754,20 +797,18 @@ def booking_cancel(request, pk):
     return render(request, 'booking_cancel.html', {'form': form, 'booking': booking})
 
 @login_required
-@group_required('admin', 'salesman')
 def booking_decline(request, pk):
-    """Decline a pending booking - Admin can decline any, Salesman can decline their own"""
+    """Decline a pending booking - Admin or assigned Salesman"""
     booking = get_object_or_404(Booking, pk=pk)
     
     # Check permissions
     is_admin = request.user.is_staff
     is_salesman = request.user.groups.filter(name='salesman').exists()
     
-    if is_salesman and not is_admin:
-        # Salesmen can only decline their own bookings
-        if booking.salesman != request.user:
-            messages.error(request, 'You can only decline your own bookings.')
-            return redirect('pending_bookings')
+    # Only admin or the assigned salesman can decline
+    if not is_admin and not (is_salesman and booking.salesman == request.user):
+        messages.error(request, "You don't have permission to decline this booking.")
+        return redirect('pending_bookings')
     
     if not booking.can_be_declined():
         messages.error(request, 'This booking cannot be declined.')
@@ -820,19 +861,24 @@ def booking_decline(request, pk):
 
 
 @login_required
-@group_required('admin', 'salesman')
 def pending_bookings_count_api(request):
     """API endpoint for pending bookings count (for badge in navbar)"""
+    # Admin sees all, salesman sees only theirs
     is_admin = request.user.is_staff
     is_salesman = request.user.groups.filter(name='salesman').exists()
     
     if is_salesman and not is_admin:
-        # Salesmen only see count for their own bookings
         count = Booking.objects.filter(status='pending', salesman=request.user).count()
     else:
-        # Admins see all pending bookings
         count = Booking.objects.filter(status='pending').count()
     
+    return JsonResponse({'count': count})
+
+@login_required
+@group_required('salesman')
+def salesman_pending_bookings_count_api(request):
+    """API endpoint for salesman pending bookings count (for badge in navbar)"""
+    count = Booking.objects.filter(salesman=request.user, status='pending').count()
     return JsonResponse({'count': count})
 
 # ============================================================
