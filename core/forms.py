@@ -501,7 +501,9 @@ class PayrollAdjustmentForm(forms.ModelForm):
         
         if self.payroll_period:
             self.fields['booking'].queryset = Booking.objects.filter(
-                payroll_period=self.payroll_period
+                appointment_date__gte=self.payroll_period.start_date,
+                appointment_date__lte=self.payroll_period.end_date,
+                created_by__groups__name='remote_agent'
             )
         
         self.fields['booking'].required = False
