@@ -151,6 +151,26 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     console.log('CSASS initialized successfully');
+
+    // Pending approvals badge updater (navbar)
+    const pendingBadge = document.getElementById('pending-count');
+    if (pendingBadge) {
+        const updatePendingCount = () => {
+            fetch('/pending-count/')
+                .then(r => r.json())
+                .then(data => {
+                    if (data && typeof data.count === 'number' && data.count > 0) {
+                        pendingBadge.textContent = data.count;
+                        pendingBadge.style.display = 'inline';
+                    } else {
+                        pendingBadge.style.display = 'none';
+                    }
+                })
+                .catch(() => {});
+        };
+        updatePendingCount();
+        setInterval(updatePendingCount, 30000);
+    }
 });
 
 // Utility functions

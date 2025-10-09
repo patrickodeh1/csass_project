@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
 {% load auth_extras %}
-{% block title %}Pending Bookings - CSASS{% endblock %}
+{% block title %}My Pending Bookings - CSASS{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
     <div class="row mb-4">
         <div class="col">
-            <h2><i class="bi bi-hourglass-split"></i> Booking Approvals</h2>
+            <h2><i class="bi bi-hourglass-split"></i> My Pending Bookings</h2>
         </div>
     </div>
 
@@ -37,7 +37,6 @@
                             <th>Created</th>
                             <th>Submitted By</th>
                             <th>Client</th>
-                            <th>Salesman</th>
                             <th>Appointment</th>
                             <th>Type</th>
                             <th>Status</th>
@@ -62,14 +61,13 @@
                                 <strong>{{ booking.client.get_full_name }}</strong><br>
                                 <small class="text-muted">{{ booking.client.email }}</small>
                             </td>
-                            <td>{{ booking.salesman.get_full_name }}</td>
                             <td>
                                 <strong>{{ booking.appointment_date|date:"M d, Y" }}</strong><br>
                                 <small>{{ booking.appointment_time|date:"g:i A" }} ({{ booking.duration_minutes }} min)</small>
                             </td>
                             <td>
-                                <span class="badge bg-{% if booking.appointment_type == 'zoom' %}info{% else %}primary{% endif %}">
-                                    {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
+                                <span class="badge bg-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning text-dark{% endif %}">
+                                    {{ booking.get_appointment_type_display }}
                                 </span>
                             </td>
                             <td>
@@ -100,30 +98,19 @@
                                         <i class="bi bi-eye"></i>
                                     </a>
                                     {% if booking.status == 'pending' %}
-                                        {% if is_salesman %}
-                                            {% if booking.salesman == user %}
-                                                <a href="{% url 'booking_approve' booking.id %}" class="btn btn-outline-success" title="Approve">
-                                                    <i class="bi bi-check-lg"></i>
-                                                </a>
-                                                <a href="{% url 'booking_decline' booking.id %}" class="btn btn-outline-danger" title="Decline">
-                                                    <i class="bi bi-x-lg"></i>
-                                                </a>
-                                            {% endif %}
-                                        {% else %}
-                                            <a href="{% url 'booking_approve' booking.id %}" class="btn btn-outline-success" title="Approve">
-                                                <i class="bi bi-check-lg"></i>
-                                            </a>
-                                            <a href="{% url 'booking_decline' booking.id %}" class="btn btn-outline-danger" title="Decline">
-                                                <i class="bi bi-x-lg"></i>
-                                            </a>
-                                        {% endif %}
+                                    <a href="{% url 'salesman_booking_approve' booking.id %}" class="btn btn-outline-success" title="Approve">
+                                        <i class="bi bi-check-lg"></i>
+                                    </a>
+                                    <a href="{% url 'salesman_booking_decline' booking.id %}" class="btn btn-outline-danger" title="Decline">
+                                        <i class="bi bi-x-lg"></i>
+                                    </a>
                                     {% endif %}
                                 </div>
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="9" class="text-center text-muted py-5">
+                            <td colspan="8" class="text-center text-muted py-5">
                                 <i class="bi bi-inbox" style="font-size: 3rem;"></i>
                                 <p class="mt-3">No bookings found</p>
                             </td>
@@ -160,23 +147,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-// Auto-refresh pending count every 30 seconds
-setInterval(function() {
-    fetch('/pending-count/')
-        .then(response => response.json())
-        .then(data => {
-            const badge = document.getElementById('pending-count');
-            if (badge && data.count > 0) {
-                badge.textContent = data.count;
-                badge.style.display = 'inline';
-            } else if (badge) {
-                badge.style.display = 'none';
-            }
-        });
-}, 30000);
-</script>
 {% endblock %}

@@ -1,14 +1,14 @@
 {% extends 'base.html' %}
 {% load auth_extras %}
-{% block title %}Approve Booking - CSASS{% endblock %}
+{% block title %}Approve My Booking - CSASS{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
     <div class="row justify-content-center">
         <div class="col-md-8">
             <div class="card shadow">
-                <div class="card-header bg-dark text-white">
-                    <h4 class="mb-0"><i class="bi bi-check-circle"></i> Approve Booking</h4>
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0"><i class="bi bi-check-circle"></i> Approve My Booking</h4>
                 </div>
                 <div class="card-body">
                     <div class="alert alert-info">
@@ -72,7 +72,7 @@
                     <form method="post" class="mt-4">
                         {% csrf_token %}
                         <div class="d-flex gap-2 justify-content-end">
-                            <a href="{% url 'pending_bookings' %}" class="btn btn-secondary">
+                            <a href="{% url 'salesman_pending_bookings' %}" class="btn btn-secondary">
                                 <i class="bi bi-arrow-left"></i> Back
                             </a>
                             <button type="submit" class="btn btn-success">
@@ -86,4 +86,3 @@
     </div>
 </div>
 {% endblock %}
-
