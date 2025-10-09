@@ -270,10 +270,6 @@ class Booking(models.Model):
         appt_datetime = datetime.combine(self.appointment_date, self.appointment_time)
         return timezone.make_aware(appt_datetime) < timezone.now()
     
-    def counts_for_commission(self):
-        """Check if booking counts for commission"""
-        return self.status in ['confirmed', 'completed']
-    
     def save(self, *args, **kwargs):
              # Set commission amount if not set
         if not self.commission_amount:
