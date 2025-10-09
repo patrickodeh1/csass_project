@@ -270,10 +270,6 @@ class Booking(models.Model):
         appt_datetime = datetime.combine(self.appointment_date, self.appointment_time)
         return timezone.make_aware(appt_datetime) < timezone.now()
     
-    def counts_for_commission(self):
-        """Check if booking counts for commission"""
-        return self.status in ['confirmed', 'completed']
-    
     def save(self, *args, **kwargs):
              # Set commission amount if not set
         if not self.commission_amount:
@@ -507,4 +503,6 @@ class AvailableTimeSlot(models.Model):
     
     def is_time_in_slot(self, time_obj):
         """Check if a given time falls within this slot"""
-        return self.start_time
+        # For simplicity, this checks if the time matches the slot start time exactly
+        # In a more complex implementation, you might want to check if time falls within a range
+        return self.start_time == time_obj

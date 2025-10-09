@@ -247,7 +247,9 @@ def calendar_view(request):
         
     elif view_mode == 'week':
         # Calculate week starting on Sunday
-        days_since_sunday = current_date.weekday()  # 0=Mon, 1=Tue, ..., 6=Sun
+        # weekday(): 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
+        # To get days since Sunday: (weekday + 1) % 7
+        days_since_sunday = (current_date.weekday() + 1) % 7
         start_date = current_date - timedelta(days=days_since_sunday)
         end_date = start_date + timedelta(days=6)
         
@@ -462,21 +464,19 @@ def booking_create(request):
             # Pass a proper time object to the form
             initial['appointment_time'] = t1.time()
 
-            # Calculate duration from timeslot start/end times
-            delta = datetime.combine(date.min, 15) - datetime.combine(date.min, t1.time())
-            duration_in_minutes = int(delta.total_seconds() / 60)
-            # Ensure minimum 15 minutes
-            duration_in_minutes = max(15, duration_in_minutes)
-            initial['duration_minutes'] = duration_in_minutes
+            # Set default duration (this logic was incorrect - fixing to use default)
+            # The original logic was trying to calculate duration incorrectly
+            # Setting a reasonable default duration of 60 minutes
+            initial['duration_minutes'] = 60
 
         except (ValueError, TypeError):
             # Fallback to default duration if calculation fails
-            initial['duration_minutes'] = 15
+            initial['duration_minutes'] = 60
             if request.method == 'GET':
                  messages.error(request, "Could not determine appointment duration from the selected slot. Please check the duration.")
     else:
         # Fallback if no time range is provided
-        initial['duration_minutes'] = 15
+        initial['duration_minutes'] = 60
 
     if slot_salesman_id:
         initial['salesman'] = slot_salesman_id
@@ -906,13 +906,21 @@ def commissions_view(request):
     
     # Calculate totals - only confirmed/completed count
     confirmed_bookings = bookings.filter(status__in=['confirmed', 'completed'])
-    total_commission = sum(b.commission_amount for b in confirmed_bookings)
-    total_bookings = confirmed_bookings.count()
+    confirmed_aggregates = confirmed_bookings.aggregate(
+        total_commission=Sum('commission_amount'),
+        total_bookings=Count('id')
+    )
+    total_commission = confirmed_aggregates['total_commission'] or 0
+    total_bookings = confirmed_aggregates['total_bookings']
     
     # Count pending bookings separately
     pending_bookings = bookings.filter(status='pending')
-    pending_count = pending_bookings.count()
-    pending_commission = sum(b.commission_amount for b in pending_bookings)
+    pending_aggregates = pending_bookings.aggregate(
+        pending_count=Count('id'),
+        pending_commission=Sum('commission_amount')
+    )
+    pending_count = pending_aggregates['pending_count']
+    pending_commission = pending_aggregates['pending_commission'] or 0
     
     # Count declined bookings
     declined_bookings = bookings.filter(status='declined')
@@ -939,8 +947,6 @@ def commissions_view(request):
         'payroll_period': payroll_period,
         'available_weeks': available_weeks,
     }
-    
-    return render(request, 'commissions.html', context)
     
     return render(request, 'commissions.html', context)
 # ============================================================
@@ -1162,9 +1168,15 @@ def payroll_finalize(request, pk):
         status__in=['confirmed', 'completed']
     )
     
-    total_commission = sum(b.commission_amount for b in bookings)
-    total_bookings = bookings.count()
-    affected_users = bookings.values('salesman').distinct().count()
+    # Use database aggregation for better performance
+    summary_aggregates = bookings.aggregate(
+        total_commission=Sum('commission_amount'),
+        total_bookings=Count('id'),
+        affected_users=Count('salesman', distinct=True)
+    )
+    total_commission = summary_aggregates['total_commission'] or 0
+    total_bookings = summary_aggregates['total_bookings']
+    affected_users = summary_aggregates['affected_users']
     
     context = {
         'payroll_period': payroll_period,
