@@ -18,8 +18,15 @@ from .models import (Booking, Client, PayrollPeriod, PayrollAdjustment,
 from .forms import (LoginForm, BookingForm, CancelBookingForm,
                     PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
 from .decorators import group_required, admin_required, remote_agent_required
-from .utils import (get_current_payroll_period, get_payroll_periods, send_booking_confirmation,
-                    send_booking_cancellation, check_booking_conflicts)
+from .utils import (
+    get_current_payroll_period,
+    get_payroll_periods,
+    send_booking_confirmation,
+    send_booking_cancellation,
+    check_booking_conflicts,
+    send_booking_approved_notification,
+    send_booking_declined_notification,
+)
 from django.utils.crypto import get_random_string
 from calendar import monthcalendar
 import logging
@@ -689,6 +696,118 @@ def salesman_pending_bookings_view(request):
     
     return render(request, 'salesman_pending_bookings.html', context)
 
+
+# Salesman-specific booking approval (redirects back to salesman list)
+@login_required
+@group_required('salesman', 'admin')
+def salesman_booking_approve(request, pk):
+    booking = get_object_or_404(Booking, pk=pk)
+
+    is_admin = request.user.is_staff
+    is_salesman = request.user.groups.filter(name='salesman').exists()
+
+    if not is_admin and not (is_salesman and booking.salesman == request.user):
+        messages.error(request, "You don't have permission to approve this booking.")
+        return redirect('salesman_pending_bookings')
+
+    if not booking.can_be_approved():
+        messages.error(request, 'This booking cannot be approved.')
+        return redirect('salesman_pending_bookings')
+
+    if request.method == 'POST':
+        booking.status = 'confirmed'
+        booking.approved_at = timezone.now()
+        booking.approved_by = request.user
+        booking.save()
+
+        try:
+            send_booking_confirmation(booking)
+        except Exception as e:
+            logger.warning(f"Failed to send booking confirmation: {str(e)}")
+
+        try:
+            send_booking_approved_notification(booking)
+        except Exception as e:
+            logger.warning(f"Failed to send approval notification: {str(e)}")
+
+        messages.success(
+            request,
+            f'✓ Booking approved for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
+            f'Confirmation emails sent to all parties.'
+        )
+
+        from .signals import create_audit_log
+        create_audit_log(
+            user=request.user,
+            action='update',
+            entity_type='Booking',
+            entity_id=booking.id,
+            changes={'status': 'confirmed', 'approved_by': request.user.get_full_name()},
+            request=request
+        )
+
+        return redirect('salesman_pending_bookings')
+
+    return render(request, 'booking_approve.html', {'booking': booking})
+
+
+# Salesman-specific booking decline (redirects back to salesman list)
+@login_required
+@group_required('salesman', 'admin')
+def salesman_booking_decline(request, pk):
+    booking = get_object_or_404(Booking, pk=pk)
+
+    is_admin = request.user.is_staff
+    is_salesman = request.user.groups.filter(name='salesman').exists()
+
+    if not is_admin and not (is_salesman and booking.salesman == request.user):
+        messages.error(request, "You don't have permission to decline this booking.")
+        return redirect('salesman_pending_bookings')
+
+    if not booking.can_be_declined():
+        messages.error(request, 'This booking cannot be declined.')
+        return redirect('salesman_pending_bookings')
+
+    if request.method == 'POST':
+        decline_reason = request.POST.get('decline_reason', '').strip()
+        if not decline_reason:
+            messages.error(request, 'Please provide a reason for declining.')
+            return render(request, 'booking_decline.html', {'booking': booking})
+
+        booking.status = 'declined'
+        booking.declined_at = timezone.now()
+        booking.declined_by = request.user
+        booking.decline_reason = decline_reason
+        booking.save()
+
+        try:
+            send_booking_declined_notification(booking)
+        except Exception as e:
+            logger.warning(f"Failed to send decline notification: {str(e)}")
+
+        messages.success(
+            request,
+            f'✗ Booking declined for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
+            f'Notification sent to {booking.created_by.get_full_name()}.'
+        )
+
+        from .signals import create_audit_log
+        create_audit_log(
+            user=request.user,
+            action='update',
+            entity_type='Booking',
+            entity_id=booking.id,
+            changes={
+                'status': 'declined',
+                'declined_by': request.user.get_full_name(),
+                'decline_reason': decline_reason,
+            },
+            request=request,
+        )
+
+        return redirect('salesman_pending_bookings')
+
+    return render(request, 'booking_decline.html', {'booking': booking})
 
 @login_required
 def booking_approve(request, pk):
