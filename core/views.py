@@ -247,7 +247,9 @@ def calendar_view(request):
         
     elif view_mode == 'week':
         # Calculate week starting on Sunday
-        days_since_sunday = current_date.weekday()  # 0=Mon, 1=Tue, ..., 6=Sun
+        # weekday() returns 0=Mon, 1=Tue, ..., 6=Sun
+        # We need (Mon=1, Tue=2, ..., Sat=6, Sun=0) days back to get to Sunday
+        days_since_sunday = (current_date.weekday() + 1) % 7
         start_date = current_date - timedelta(days=days_since_sunday)
         end_date = start_date + timedelta(days=6)
         
@@ -462,12 +464,8 @@ def booking_create(request):
             # Pass a proper time object to the form
             initial['appointment_time'] = t1.time()
 
-            # Calculate duration from timeslot start/end times
-            delta = datetime.combine(date.min, 15) - datetime.combine(date.min, t1.time())
-            duration_in_minutes = int(delta.total_seconds() / 60)
-            # Ensure minimum 15 minutes
-            duration_in_minutes = max(15, duration_in_minutes)
-            initial['duration_minutes'] = duration_in_minutes
+            # All appointments are 15 minutes duration
+            initial['duration_minutes'] = 15
 
         except (ValueError, TypeError):
             # Fallback to default duration if calculation fails
