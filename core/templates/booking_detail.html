@@ -46,12 +46,13 @@
                             <h6 class="text-muted mb-3">Salesman</h6>
                             <p class="mb-2"><strong>Name:</strong> {{ booking.salesman.get_full_name }}</p>
                             <p class="mb-2"><strong>Email:</strong> {{ booking.salesman.email }}</p>
-                            <p class="mb-2"><strong>Commission:</strong> ${{ booking.commission_amount }}</p>
                         </div>
                         <div class="col-md-6">
                             <h6 class="text-muted mb-3">Booking Information</h6>
                             <p class="mb-2"><strong>Created By:</strong> {{ booking.created_by.get_full_name }}</p>
                             <p class="mb-2"><strong>Created At:</strong> {{ booking.created_at|date:"M d, Y g:i A" }}</p>
+                            <p class="mb-2"><strong>Commission:</strong> ${{ booking.commission_amount }}</p>
+
                             {% if booking.is_locked %}
                             <p class="mb-2">
                                 <span class="badge bg-warning text-dark">
