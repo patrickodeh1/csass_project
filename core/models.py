@@ -508,7 +508,7 @@ class AvailableTimeSlot(models.Model):
         from datetime import timedelta
         
         # Calculate end time (15 minutes after start)
-        end_time = (datetime.combine(date.min, self.start_time) + timedelta(minutes=15)).time()
+        end_time = (datetime.combine(self.date.min, self.start_time) + timedelta(minutes=15)).time()
         
         # Check if the given time is within the slot range
         return self.start_time <= time_obj < end_time
