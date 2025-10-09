@@ -941,8 +941,6 @@ def commissions_view(request):
     }
     
     return render(request, 'commissions.html', context)
-    
-    return render(request, 'commissions.html', context)
 # ============================================================
 # Availability Views
 # ============================================================

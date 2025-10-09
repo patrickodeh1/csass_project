@@ -270,10 +270,6 @@ class Booking(models.Model):
         appt_datetime = datetime.combine(self.appointment_date, self.appointment_time)
         return timezone.make_aware(appt_datetime) < timezone.now()
     
-    def counts_for_commission(self):
-        """Check if booking counts for commission"""
-        return self.status in ['confirmed', 'completed']
-    
     def save(self, *args, **kwargs):
              # Set commission amount if not set
         if not self.commission_amount:
@@ -325,14 +321,13 @@ class Booking(models.Model):
                 slot.save(update_fields=['is_active'])
 
     def conflicts_with_booking(self):
-        """Check if this unavailability conflicts with any confirmed bookings"""
+        """Check if this booking conflicts with any other confirmed bookings"""
         return Booking.objects.filter(
             salesman=self.salesman,
             status='confirmed',
-            appointment_date__gte=self.start_date,
-            appointment_date__lte=self.end_date,
-            appointment_time__gte=self.start_time,
-        ).exists()
+            appointment_date=self.appointment_date,
+            appointment_time=self.appointment_time,
+        ).exclude(pk=self.pk).exists()
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Check if the instance has a primary key (meaning it's loaded from DB)
@@ -507,4 +502,8 @@ class AvailableTimeSlot(models.Model):
     
     def is_time_in_slot(self, time_obj):
         """Check if a given time falls within this slot"""
-        return self.start_time
+        # Since slots are 15 minutes long, check if the time matches the start time
+        # or falls within the 15-minute window
+        from datetime import timedelta
+        slot_end_time = (datetime.combine(date.min, self.start_time) + timedelta(minutes=15)).time()
+        return self.start_time <= time_obj < slot_end_time
