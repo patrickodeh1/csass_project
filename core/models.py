@@ -503,4 +503,12 @@ class AvailableTimeSlot(models.Model):
     
     def is_time_in_slot(self, time_obj):
         """Check if a given time falls within this slot"""
-        return self.start_time
+        # Since slots are 15 minutes long, check if the time matches the start time
+        # or falls within the 15-minute window
+        from datetime import timedelta
+        
+        # Calculate end time (15 minutes after start)
+        end_time = (datetime.combine(date.min, self.start_time) + timedelta(minutes=15)).time()
+        
+        # Check if the given time is within the slot range
+        return self.start_time <= time_obj < end_time
