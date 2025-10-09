@@ -3,7 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.core.validators import MinValueValidator
 from django.utils import timezone
 from decimal import Decimal
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, date
 import uuid
 
 class UserManager(BaseUserManager):
@@ -501,9 +501,10 @@ class AvailableTimeSlot(models.Model):
         return f"{self.salesman.get_full_name()} - {self.date.strftime('%b %d, %Y')} {self.start_time} ({self.get_appointment_type_display()})"
     
     def is_time_in_slot(self, time_obj):
-        """Check if a given time falls within this slot"""
-        # Since slots are 15 minutes long, check if the time matches the start time
-        # or falls within the 15-minute window
+        """Check if a given time falls within this slot (15-minute slots).
+
+        The code now explicitly imports `date` and uses it to compute the slot end time.
+        """
         from datetime import timedelta
         slot_end_time = (datetime.combine(date.min, self.start_time) + timedelta(minutes=15)).time()
         return self.start_time <= time_obj < slot_end_time

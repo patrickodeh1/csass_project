@@ -509,20 +509,25 @@ def booking_create(request):
                 form.cleaned_data.get('appointment_time') and 
                 form.cleaned_data.get('appointment_type')):
                 
-                try:
-                    # Look for the ACTIVE slot matching the booking's exact start time and type
-                    available_slot = AvailableTimeSlot.objects.get(
-                        salesman=form.cleaned_data['salesman'],
-                        date=form.cleaned_data['appointment_date'],
-                        start_time=form.cleaned_data['appointment_time'],
-                        appointment_type=form.cleaned_data['appointment_type'],
-                        is_active=True # CRUCIAL: Must be an active slot
-                    )
-                except AvailableTimeSlot.DoesNotExist:
+                # Prefer filtering to avoid MultipleObjectsReturned; choose the first active slot
+                slots_qs = AvailableTimeSlot.objects.filter(
+                    salesman=form.cleaned_data['salesman'],
+                    date=form.cleaned_data['appointment_date'],
+                    start_time=form.cleaned_data['appointment_time'],
+                    appointment_type=form.cleaned_data['appointment_type'],
+                    is_active=True
+                )
+                if not slots_qs.exists():
                     # Fail the booking if the selected slot is no longer available/active
                     messages.error(request, "The selected time slot is no longer active or available.")
-                    # Return the form with the error message
                     return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
+                # If multiple slots match (data duplication), pick the first and log a warning
+                available_slot = slots_qs.first()
+                if slots_qs.count() > 1:
+                    logger.warning(
+                        f"Multiple active AvailableTimeSlot records found for salesman={form.cleaned_data['salesman'].id} "
+                        f"date={form.cleaned_data['appointment_date']} time={form.cleaned_data['appointment_time']}. Using the first match (id={available_slot.id})."
+                    )
             
             # 2. Save the Booking object (commit=False)
             booking = form.save(commit=False)
