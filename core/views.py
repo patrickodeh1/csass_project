@@ -3,6 +3,7 @@ from django.contrib.auth import login, logout, authenticate, update_session_auth
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Sum, Count
+from django.db import IntegrityError
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
 from django.utils import timezone
 from django.core.paginator import Paginator
@@ -538,7 +539,25 @@ def booking_create(request):
             
             # Set system fields and final save
             booking.created_by = request.user
-            booking.save() # The custom save method handles deactivating the slot for pending/confirmed
+            # Prevent duplicate bookings for same salesman/date/time at the application level
+            duplicate_exists = Booking.objects.filter(
+                salesman=booking.salesman,
+                appointment_date=booking.appointment_date,
+                appointment_time=booking.appointment_time,
+            )
+            if booking.pk:
+                duplicate_exists = duplicate_exists.exclude(pk=booking.pk)
+
+            if duplicate_exists.exists():
+                messages.error(request, 'The selected time is already booked for this salesman. Please choose a different time.')
+                return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
+
+            try:
+                booking.save() # The custom save method handles deactivating the slot for pending/confirmed
+            except IntegrityError:
+                # Race condition or DB-level uniqueness violation occurred
+                messages.error(request, 'The selected time is already booked. Please choose a different time.')
+                return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
             
             # 4. --- Handle Notifications (Existing Logic) ---
             is_remote_agent = request.user.groups.filter(name='remote_agent').exists()
