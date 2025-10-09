@@ -238,7 +238,6 @@ class Booking(models.Model):
             models.Index(fields=['salesman', 'appointment_date', 'status']),
             models.Index(fields=['payroll_period']),
         ]
-        unique_together = ['salesman', 'appointment_date', 'appointment_time']
         ordering = ['appointment_date', 'appointment_time']
     
     def __str__(self):
