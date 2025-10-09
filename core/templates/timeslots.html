@@ -68,7 +68,9 @@
                                 {{ slot.start_time|time:"g:i A" }} - {{ slot.end_time|time:"g:i A" }}
                             </td>
                             <td>
-                                <span class="badge bg-info">{{ slot.get_appointment_type_display }}</span>
+                                <span class="badge bg-{% if slot.appointment_type == 'zoom' %}info{% else %}primary{% endif %}">
+                                    {% if slot.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
+                                </span>
                             </td>
                             <td>
                                 {% if slot.is_active %}

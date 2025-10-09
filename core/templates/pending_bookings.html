@@ -68,8 +68,8 @@
                                 <small>{{ booking.appointment_time|date:"g:i A" }} ({{ booking.duration_minutes }} min)</small>
                             </td>
                             <td>
-                                <span class="badge bg-{% if booking.appointment_type == 'zoom' %}primary{% else %}warning text-dark{% endif %}">
-                                    {{ booking.get_appointment_type_display }}
+                                <span class="badge bg-{% if booking.appointment_type == 'zoom' %}info{% else %}primary{% endif %}">
+                                    {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
                                 </span>
                             </td>
                             <td>
@@ -100,12 +100,23 @@
                                         <i class="bi bi-eye"></i>
                                     </a>
                                     {% if booking.status == 'pending' %}
-                                    <a href="{% url 'booking_approve' booking.id %}" class="btn btn-outline-success" title="Approve">
-                                        <i class="bi bi-check-lg"></i>
-                                    </a>
-                                    <a href="{% url 'booking_decline' booking.id %}" class="btn btn-outline-danger" title="Decline">
-                                        <i class="bi bi-x-lg"></i>
-                                    </a>
+                                        {% if is_salesman %}
+                                            {% if booking.salesman == user %}
+                                                <a href="{% url 'booking_approve' booking.id %}" class="btn btn-outline-success" title="Approve">
+                                                    <i class="bi bi-check-lg"></i>
+                                                </a>
+                                                <a href="{% url 'booking_decline' booking.id %}" class="btn btn-outline-danger" title="Decline">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </a>
+                                            {% endif %}
+                                        {% else %}
+                                            <a href="{% url 'booking_approve' booking.id %}" class="btn btn-outline-success" title="Approve">
+                                                <i class="bi bi-check-lg"></i>
+                                            </a>
+                                            <a href="{% url 'booking_decline' booking.id %}" class="btn btn-outline-danger" title="Decline">
+                                                <i class="bi bi-x-lg"></i>
+                                            </a>
+                                        {% endif %}
                                     {% endif %}
                                 </div>
                             </td>
