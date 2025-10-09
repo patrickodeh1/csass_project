@@ -605,75 +605,96 @@ def booking_edit(request, pk):
     return render(request, 'booking_form.html', {'form': form, 'title': 'Edit Booking', 'booking': booking})
 
 @login_required
-@admin_required
 def pending_bookings_view(request):
-    """Admin view to see all pending bookings requiring approval"""
+    """Pending bookings requiring approval.
+    - Admins see all
+    - Salesmen see only bookings assigned to them
+    """
+    # Restrict access to admins and salesmen only
+    is_admin = request.user.is_staff
+    is_salesman = request.user.groups.filter(name='salesman').exists()
+    if not (is_admin or is_salesman):
+        return HttpResponseForbidden("You don't have permission to view this page.")
+
     status_filter = request.GET.get('status', 'pending')
-    
+
     bookings = Booking.objects.select_related('client', 'salesman', 'created_by')
-    
+
+    # Role-based visibility
+    if is_salesman and not is_admin:
+        bookings = bookings.filter(salesman=request.user)
+
+    # Status filter
     if status_filter == 'pending':
         bookings = bookings.filter(status='pending')
     elif status_filter == 'declined':
         bookings = bookings.filter(status='declined')
     elif status_filter == 'all':
         bookings = bookings.filter(status__in=['pending', 'declined', 'confirmed'])
-    
+
     bookings = bookings.order_by('-created_at')
-    
+
     # Pagination
     paginator = Paginator(bookings, 25)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
-    
-    # Get counts
-    pending_count = Booking.objects.filter(status='pending').count()
-    declined_count = Booking.objects.filter(status='declined').count()
-    
+
+    # Role-scoped counts
+    base_qs = Booking.objects.all()
+    if is_salesman and not is_admin:
+        base_qs = base_qs.filter(salesman=request.user)
+
+    pending_count = base_qs.filter(status='pending').count()
+    declined_count = base_qs.filter(status='declined').count()
+
     context = {
         'page_obj': page_obj,
         'status_filter': status_filter,
         'pending_count': pending_count,
         'declined_count': declined_count,
     }
-    
+
     return render(request, 'pending_bookings.html', context)
 
 
 @login_required
-@admin_required
 def booking_approve(request, pk):
-    """Approve a pending booking"""
+    """Approve a pending booking (admin or assigned salesman)."""
     booking = get_object_or_404(Booking, pk=pk)
-    
+
+    # Permission: admin or the assigned salesman
+    if not (request.user.is_staff or booking.salesman_id == request.user.id):
+        messages.error(request, "You don't have permission to approve this booking.")
+        return redirect('pending_bookings')
+
     if not booking.can_be_approved():
         messages.error(request, 'This booking cannot be approved.')
         return redirect('pending_bookings')
-    
+
     if request.method == 'POST':
         booking.status = 'confirmed'
         booking.approved_at = timezone.now()
         booking.approved_by = request.user
         booking.save()
-        
+
         # Send confirmation emails to client and salesman
         try:
             send_booking_confirmation(booking)
         except Exception as e:
             logger.warning(f"Failed to send booking confirmation: {str(e)}")
-        
+
         # Send approval notification to remote agent who created it
         try:
             send_booking_approved_notification(booking)
         except Exception as e:
             logger.warning(f"Failed to send approval notification: {str(e)}")
-        
+
         messages.success(
-            request, 
+            request,
             f'✓ Booking approved for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
             f'Confirmation emails sent to all parties.'
         )
-        
+
         # Log the approval
         from .signals import create_audit_log
         create_audit_log(
@@ -684,9 +705,9 @@ def booking_approve(request, pk):
             changes={'status': 'confirmed', 'approved_by': request.user.get_full_name()},
             request=request
         )
-        
+
         return redirect('pending_bookings')
-    
+
     return render(request, 'booking_approve.html', {'booking': booking})
 
 @login_required
@@ -783,40 +804,44 @@ def booking_cancel(request, pk):
     return render(request, 'booking_cancel.html', {'form': form, 'booking': booking})
 
 @login_required
-@admin_required
 def booking_decline(request, pk):
-    """Decline a pending booking"""
+    """Decline a pending booking (admin or assigned salesman)."""
     booking = get_object_or_404(Booking, pk=pk)
-    
+
+    # Permission: admin or the assigned salesman
+    if not (request.user.is_staff or booking.salesman_id == request.user.id):
+        messages.error(request, "You don't have permission to decline this booking.")
+        return redirect('pending_bookings')
+
     if not booking.can_be_declined():
         messages.error(request, 'This booking cannot be declined.')
         return redirect('pending_bookings')
-    
+
     if request.method == 'POST':
         decline_reason = request.POST.get('decline_reason', '').strip()
-        
+
         if not decline_reason:
             messages.error(request, 'Please provide a reason for declining.')
             return render(request, 'booking_decline.html', {'booking': booking})
-        
+
         booking.status = 'declined'
         booking.declined_at = timezone.now()
         booking.declined_by = request.user
         booking.decline_reason = decline_reason
         booking.save()
-        
+
         # Send decline notification to remote agent who created it
         try:
             send_booking_declined_notification(booking)
         except Exception as e:
             logger.warning(f"Failed to send decline notification: {str(e)}")
-        
+
         messages.success(
-            request, 
+            request,
             f'✗ Booking declined for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
             f'Notification sent to {booking.created_by.get_full_name()}.'
         )
-        
+
         # Log the decline
         from .signals import create_audit_log
         create_audit_log(
@@ -825,15 +850,15 @@ def booking_decline(request, pk):
             entity_type='Booking',
             entity_id=booking.id,
             changes={
-                'status': 'declined', 
+                'status': 'declined',
                 'declined_by': request.user.get_full_name(),
                 'decline_reason': decline_reason
             },
             request=request
         )
-        
+
         return redirect('pending_bookings')
-    
+
     return render(request, 'booking_decline.html', {'booking': booking})
 
 @login_required
@@ -896,10 +921,18 @@ def salesman_booking_decline(request, pk):
 
 
 @login_required
-@admin_required
 def pending_bookings_count_api(request):
-    """API endpoint for pending bookings count (for badge in navbar)"""
-    count = Booking.objects.filter(status='pending').count()
+    """API endpoint for pending bookings count (for badge in navbar).
+    Admins: count all pending
+    Salesmen: count pending for themselves
+    Others: 0
+    """
+    if request.user.is_staff:
+        count = Booking.objects.filter(status='pending').count()
+    elif request.user.groups.filter(name='salesman').exists():
+        count = Booking.objects.filter(status='pending', salesman=request.user).count()
+    else:
+        count = 0
     return JsonResponse({'count': count})
 
 # ============================================================

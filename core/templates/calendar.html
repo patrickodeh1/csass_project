@@ -149,7 +149,7 @@
                                         onclick="window.location.href='{% url 'booking_detail' booking.id %}'"
                                         title="Pending: {{ booking.appointment_time|date:'g:i A' }} - {{ booking.client.business_name }}">
                                         <div><i class="bi bi-hourglass-split"></i> <strong>{{ booking.appointment_time|date:"g:iA" }}</strong></div>
-                                        <div class="text-truncate"><i class="bi bi-briefcase"></i> **PENDING** - {{ booking.client.business_name }}</div>
+                                        <div class="text-truncate"><i class="bi bi-briefcase"></i> {{ booking.client.business_name }}</div>
                                         <span class="badge bg-warning text-dark" style="font-size: 0.65rem;">PENDING</span>
                                     </div>
                                     {% endfor %}
@@ -277,7 +277,7 @@
                             onclick="window.location.href='{% url 'booking_detail' booking.id %}'">
                             <div class="card-body py-2 px-2">
                                 <div class="d-block"><i class="bi bi-hourglass-split"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong></div>
-                                <small class="d-block text-truncate"><i class="bi bi-briefcase"></i> **PENDING** - {{ booking.client.business_name }}</small>
+                                <small class="d-block text-truncate"><i class="bi bi-briefcase"></i> {{ booking.client.business_name }}</small>
                                 <span class="badge bg-warning text-dark" style="font-size: 0.65rem;">PENDING</span>
                             </div>
                         </div>

@@ -6,7 +6,7 @@
 <div class="container-fluid">
     <div class="row mb-4">
         <div class="col">
-            <h2><i class="bi bi-cash-stack"></i> Payroll Processing</h2>
+            <h2 class="text-dark fw-bold display-6"><i class="bi bi-cash-stack"></i> Payroll Processing</h2>
         </div>
         <div class="col-auto">
             <a href="{% url 'payroll_export' %}?week={{ start_date|date:'Y-m-d' }}_{{ end_date|date:'Y-m-d' }}" class="btn btn-success">
@@ -22,6 +22,9 @@
 
     <!-- Period Selector -->
     <div class="card mb-4">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">Pay Period</h5>
+        </div>
         <div class="card-body">
             <div class="row align-items-center">
                 <div class="col-md-8">
@@ -102,7 +105,7 @@
 
     <!-- Employee Commissions -->
     <div class="card shadow mb-4">
-        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Employee Commissions</h5>
             <a href="{% url 'payroll_adjustment_create' %}?week={{ start_date|date:'Y-m-d' }}_{{ end_date|date:'Y-m-d' }}" 
                class="btn btn-sm btn-outline-primary">
