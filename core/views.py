@@ -500,7 +500,7 @@ def booking_create(request):
     
     if request.method == 'POST':
         # Pass initial data to POST form so template can access it on validation errors
-        form = BookingForm(request.POST, initial=initial, request=request)
+        form = BookingForm(request.POST, request.FILES, initial=initial, request=request)
         if form.is_valid():
             
             # 1. --- 🌟 NEW LOGIC: FIND THE AVAILABLE TIME SLOT 🌟 ---
@@ -594,7 +594,7 @@ def booking_edit(request, pk):
         return HttpResponseForbidden("Only administrators can edit bookings.")
     
     if request.method == 'POST':
-        form = BookingForm(request.POST, instance=booking, request=request)
+        form = BookingForm(request.POST, request.FILES, instance=booking, request=request)
         if form.is_valid():
             booking = form.save()
             messages.success(request, 'Booking updated successfully!')

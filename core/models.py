@@ -206,6 +206,7 @@ class Booking(models.Model):
     zoom_link = models.URLField(blank=True)
     notes = models.TextField(blank=True)
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    audio_file = models.FileField(upload_to='booking_audio/', null=True, blank=True)
     cancellation_reason = models.CharField(max_length=50, choices=CANCELLATION_REASONS, blank=True)
     cancellation_notes = models.TextField(blank=True)
     canceled_at = models.DateTimeField(null=True, blank=True)
