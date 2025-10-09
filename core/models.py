@@ -206,6 +206,7 @@ class Booking(models.Model):
     zoom_link = models.URLField(blank=True)
     notes = models.TextField(blank=True)
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    audio_file = models.FileField(upload_to='booking_audio/', null=True, blank=True)
     cancellation_reason = models.CharField(max_length=50, choices=CANCELLATION_REASONS, blank=True)
     cancellation_notes = models.TextField(blank=True)
     canceled_at = models.DateTimeField(null=True, blank=True)
@@ -255,18 +256,7 @@ class Booking(models.Model):
         """Check if booking can be declined"""
         return self.status == 'pending'
 
-    def get_end_time(self):
-        """Calculate end time based on duration"""
-        dt = datetime.combine(self.appointment_date, self.appointment_time)
-        end_dt = dt + timedelta(minutes=self.duration_minutes)
-        return end_dt.time()
-    
-    def get_buffer_end_time(self):
-        """Calculate when buffer period ends"""
-        config = SystemConfig.get_config()
-        dt = datetime.combine(self.appointment_date, self.appointment_time)
-        buffer_dt = dt + timedelta(minutes=self.duration_minutes + config.buffer_time_minutes)
-        return buffer_dt.time()
+   
     
     def is_editable(self):
         """Check if booking can be edited"""
@@ -343,7 +333,6 @@ class Booking(models.Model):
             appointment_date__gte=self.start_date,
             appointment_date__lte=self.end_date,
             appointment_time__gte=self.start_time,
-            appointment_time__lt=self.end_time
         ).exists()
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -423,20 +412,7 @@ class PayrollAdjustment(models.Model):
     def __str__(self):
         return f"{self.adjustment_type} - {self.user.get_full_name()} - ${self.amount}"
 
-class CompanyHoliday(models.Model):
-    name = models.CharField(max_length=100)
-    date = models.DateField()
-    is_recurring_annually = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['date']),
-        ]
-        ordering = ['date']
-    
-    def __str__(self):
-        return f"{self.name} - {self.date}"
+
 
 class SystemConfig(models.Model):
     # Singleton pattern - only one record with id=1
@@ -512,7 +488,6 @@ class AvailableTimeSlot(models.Model):
     salesman = models.ForeignKey(User, on_delete=models.CASCADE, related_name='available_timeslots')
     date = models.DateField(null=True)
     start_time = models.TimeField()
-    end_time = models.TimeField()
     appointment_type = models.CharField(
         max_length=20, 
         choices=APPOINTMENT_TYPE_CHOICES,
@@ -529,8 +504,8 @@ class AvailableTimeSlot(models.Model):
         ]
     
     def __str__(self):
-        return f"{self.salesman.get_full_name()} - {self.date.strftime('%b %d, %Y')} {self.start_time}-{self.end_time} ({self.get_appointment_type_display()})"
+        return f"{self.salesman.get_full_name()} - {self.date.strftime('%b %d, %Y')} {self.start_time} ({self.get_appointment_type_display()})"
     
     def is_time_in_slot(self, time_obj):
         """Check if a given time falls within this slot"""
-        return self.start_time <= time_obj < self.end_time
+        return self.start_time

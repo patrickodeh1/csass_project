@@ -62,6 +62,16 @@
                         </div>
                     </div>
 
+                    {% if booking.audio_file %}
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">Audio</h6>
+                        <audio controls preload="none" style="width: 100%">
+                            <source src="{{ booking.audio_file.url }}">
+                            Your browser does not support the audio element.
+                        </audio>
+                    </div>
+                    {% endif %}
+
                     {% if booking.notes %}
                     <div class="mb-4">
                         <h6 class="text-muted mb-2">Notes</h6>
@@ -85,14 +95,22 @@
                         <a href="{% url 'calendar' %}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left"></i> Back to Calendar
                         </a>
+                        {% if booking.status == 'pending' and request.user.is_staff %}
+                        <a href="{% url 'booking_decline' booking.id %}" class="btn btn-outline-danger">
+                            <i class="bi bi-x-circle"></i> Decline
+                        </a>
+                        <a href="{% url 'booking_approve' booking.id %}" class="btn btn-success">
+                            <i class="bi bi-check-circle"></i> Approve
+                        </a>
+                        {% endif %}
                         {% if booking.is_editable %}
                         <a href="{% url 'booking_edit' booking.id %}" class="btn btn-primary">
                             <i class="bi bi-pencil"></i> Edit
                         </a>
                         {% if booking.status != 'canceled' %}
-                        <a href="{% url 'booking_cancel' booking.id %}" class="btn btn-danger">
+                        <!--<a href="{% url 'booking_cancel' booking.id %}" class="btn btn-danger">
                             <i class="bi bi-x-circle"></i> Cancel
-                        </a>
+                        </a>-->
                         {% endif %}
                         {% endif %}
                     </div>

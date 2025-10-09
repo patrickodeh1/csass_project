@@ -65,7 +65,7 @@
                                 <span class="badge bg-secondary">{{ slot.date|date:"D, M d" }}</span>
                             </td>
                             <td>
-                                {{ slot.start_time|time:"g:i A" }} - {{ slot.end_time|time:"g:i A" }}
+                                {{ slot.start_time|time:"g:i A" }} <!--- {{ slot.end_time|time:"g:i A" }}-->
                             </td>
                             <td>
                                 <span class="badge bg-{% if slot.appointment_type == 'zoom' %}info{% else %}primary{% endif %}">

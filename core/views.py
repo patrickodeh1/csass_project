@@ -14,7 +14,7 @@ from django.contrib.auth.views import (
 import csv
 from django.urls import reverse_lazy
 from .models import (Booking, Client, PayrollPeriod, PayrollAdjustment, 
-                     SystemConfig, AvailableTimeSlot, AuditLog, CompanyHoliday, User)
+                     SystemConfig, AvailableTimeSlot, AuditLog, User)
 from .forms import (LoginForm, BookingForm, CancelBookingForm,
                     PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
 from .decorators import group_required, admin_required, remote_agent_required
@@ -403,11 +403,6 @@ def calendar_view(request):
             day_confirmed_bookings = confirmed_bookings_dict.get(current_date, [])
             day_declined_bookings = declined_bookings_dict.get(current_date, [])
     
-    # Get holidays
-    holidays = CompanyHoliday.objects.filter(
-        date__gte=start_date,
-        date__lte=end_date
-    )
     
     # Get all salesmen for filter (only for admins)
     salesmen = None
@@ -418,7 +413,7 @@ def calendar_view(request):
         )
     
     context = {
-        'holidays': holidays,
+        
         'salesmen': salesmen,
         'current_date': current_date,
         'start_date': start_date,
@@ -452,24 +447,23 @@ def booking_create(request):
     slot_salesman_id = request.GET.get('salesman')
     slot_date_str = request.GET.get('date')
     start_time_str = request.GET.get('start_time')
-    end_time_str = request.GET.get('end_time')
+    #end_time_str = request.GET.get('end_time')
     slot_type = request.GET.get('type')
     
     # --- Time and Duration Calculation (Existing Logic) ---
     if slot_date_str:
         initial['appointment_date'] = slot_date_str
 
-    if start_time_str and end_time_str:
+    if start_time_str:
         try:
             # Convert time strings to datetime objects
             t1 = datetime.strptime(start_time_str, '%H:%M')
-            t2 = datetime.strptime(end_time_str, '%H:%M')
             
             # Pass a proper time object to the form
             initial['appointment_time'] = t1.time()
 
             # Calculate duration from timeslot start/end times
-            delta = datetime.combine(date.min, t2.time()) - datetime.combine(date.min, t1.time())
+            delta = datetime.combine(date.min, 15) - datetime.combine(date.min, t1.time())
             duration_in_minutes = int(delta.total_seconds() / 60)
             # Ensure minimum 15 minutes
             duration_in_minutes = max(15, duration_in_minutes)
@@ -500,7 +494,7 @@ def booking_create(request):
     
     if request.method == 'POST':
         # Pass initial data to POST form so template can access it on validation errors
-        form = BookingForm(request.POST, initial=initial, request=request)
+        form = BookingForm(request.POST, request.FILES, initial=initial, request=request)
         if form.is_valid():
             
             # 1. --- 🌟 NEW LOGIC: FIND THE AVAILABLE TIME SLOT 🌟 ---
@@ -594,7 +588,7 @@ def booking_edit(request, pk):
         return HttpResponseForbidden("Only administrators can edit bookings.")
     
     if request.method == 'POST':
-        form = BookingForm(request.POST, instance=booking, request=request)
+        form = BookingForm(request.POST, request.FILES, instance=booking, request=request)
         if form.is_valid():
             booking = form.save()
             messages.success(request, 'Booking updated successfully!')
