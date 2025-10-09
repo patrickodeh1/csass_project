@@ -853,6 +853,25 @@ def booking_decline(request, pk):
     return render(request, 'booking_decline.html', {'booking': booking})
 
 
+@login_required
+@group_required('salesman')
+def salesman_booking_approve(request, pk):
+    """Wrapper for salesmen to approve bookings (URL target).
+    Delegates to the admin booking_approve logic which already allows the
+    assigned salesman to approve their bookings.
+    """
+    return booking_approve(request, pk)
+
+
+@login_required
+@group_required('salesman')
+def salesman_booking_decline(request, pk):
+    """Wrapper for salesmen to decline bookings (URL target).
+    Delegates to the existing booking_decline logic.
+    """
+    return booking_decline(request, pk)
+
+
 
 @login_required
 def pending_bookings_count_api(request):
