@@ -23,10 +23,10 @@ urlpatterns = [
     path('booking/<int:pk>/edit/', views.booking_edit, name='booking_edit'),
     path('booking/<int:pk>/cancel/', views.booking_cancel, name='booking_cancel'),
     
-    # Booking Approvals (Admin)
-    path('admiin/bookings/pending/', views.pending_bookings_view, name='pending_bookings'),
-    path('admiin/bookings/<int:pk>/approve/', views.booking_approve, name='booking_approve'),
-    path('admiin/bookings/<int:pk>/decline/', views.booking_decline, name='booking_decline'),
+    # Booking Approvals (Admin & Salesman)
+    path('bookings/pending/', views.pending_bookings_view, name='pending_bookings'),
+    path('bookings/<int:pk>/approve/', views.booking_approve, name='booking_approve'),
+    path('bookings/<int:pk>/decline/', views.booking_decline, name='booking_decline'),
     
     
     # Commissions
