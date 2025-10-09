@@ -493,14 +493,13 @@ class PayrollAdjustmentForm(forms.ModelForm):
         self.payroll_period = kwargs.pop('payroll_period', None)
         super().__init__(*args, **kwargs)
         
-        # Filter users to remote agents that are on the payroll (have bookings in this period)
+        # Filter users to remote_agents who are on the payroll
+        self.fields['user'].queryset = User.objects.filter(
+            groups__name='remote_agent',
+            is_active=True
+        ).distinct().order_by('first_name', 'last_name')
+        
         if self.payroll_period:
-            self.fields['user'].queryset = User.objects.filter(
-                groups__name='remote_agent',
-                bookings_created__appointment_date__gte=self.payroll_period.start_date,
-                bookings_created__appointment_date__lte=self.payroll_period.end_date
-            ).distinct()
-            
             self.fields['booking'].queryset = Booking.objects.filter(
                 appointment_date__gte=self.payroll_period.start_date,
                 appointment_date__lte=self.payroll_period.end_date,

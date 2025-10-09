@@ -659,6 +659,44 @@ def pending_bookings_view(request):
     
     return render(request, 'pending_bookings.html', context)
 
+@login_required
+@group_required('salesman')
+def salesman_pending_bookings_view(request):
+    """Salesman view to see their own pending bookings requiring approval"""
+    status_filter = request.GET.get('status', 'pending')
+    
+    # Only show bookings for this salesman
+    bookings = Booking.objects.filter(
+        salesman=request.user
+    ).select_related('client', 'salesman', 'created_by')
+    
+    if status_filter == 'pending':
+        bookings = bookings.filter(status='pending')
+    elif status_filter == 'declined':
+        bookings = bookings.filter(status='declined')
+    elif status_filter == 'all':
+        bookings = bookings.filter(status__in=['pending', 'declined', 'confirmed'])
+    
+    bookings = bookings.order_by('-created_at')
+    
+    # Pagination
+    paginator = Paginator(bookings, 25)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Get counts for this salesman only
+    pending_count = Booking.objects.filter(salesman=request.user, status='pending').count()
+    declined_count = Booking.objects.filter(salesman=request.user, status='declined').count()
+    
+    context = {
+        'page_obj': page_obj,
+        'status_filter': status_filter,
+        'pending_count': pending_count,
+        'declined_count': declined_count,
+    }
+    
+    return render(request, 'salesman_pending_bookings.html', context)
+
 
 @login_required
 def booking_approve(request, pk):
@@ -834,6 +872,13 @@ def pending_bookings_count_api(request):
     else:
         count = Booking.objects.filter(status='pending').count()
     
+    return JsonResponse({'count': count})
+
+@login_required
+@group_required('salesman')
+def salesman_pending_bookings_count_api(request):
+    """API endpoint for salesman pending bookings count (for badge in navbar)"""
+    count = Booking.objects.filter(salesman=request.user, status='pending').count()
     return JsonResponse({'count': count})
 
 # ============================================================
