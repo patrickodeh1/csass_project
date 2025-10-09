@@ -93,7 +93,6 @@ def log_available_time_slot_changes(sender, instance, created, **kwargs):
             'salesman': instance.salesman.get_full_name(),
             'date': str(instance.date),
             'start_time': str(instance.start_time),
-            'end_time': str(instance.end_time),
             'appointment_type': instance.get_appointment_type_display(),
         }
         create_audit_log(

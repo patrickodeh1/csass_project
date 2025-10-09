@@ -308,12 +308,14 @@ class BookingForm(forms.ModelForm):
     client_phone = forms.CharField(max_length=20, required=True)
     zoom_link = forms.URLField(required=False, widget=forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'Zoom meeting link (if applicable)', 'readonly': True}))
     
+    audio_file = forms.FileField(required=False)
+
     class Meta:
         model = Booking
         fields = [
             'business_name', 'client_first_name', 'client_last_name',
             'client_email', 'client_phone', 'salesman', 'appointment_date',
-            'appointment_time', 'duration_minutes', 'appointment_type', 'zoom_link', 'notes'
+            'appointment_time', 'duration_minutes', 'appointment_type', 'zoom_link', 'notes', 'audio_file'
         ]
         widgets = {
             'appointment_date': forms.DateInput(attrs={'type': 'date'}),
@@ -338,12 +340,30 @@ class BookingForm(forms.ModelForm):
         )
         self.fields['salesman'].widget.attrs['class'] = 'form-control'
         
+        # Always force duration to 15 minutes in the UI
+        self.fields['duration_minutes'].initial = 15
+        self.fields['duration_minutes'].disabled = True
+
         # Pre-fill client info if editing
         if self.instance and self.instance.pk:
+            # Business name
+            self.fields['business_name'].initial = getattr(self.instance.client, 'business_name', '')
             self.fields['client_first_name'].initial = self.instance.client.first_name
             self.fields['client_last_name'].initial = self.instance.client.last_name
             self.fields['client_email'].initial = self.instance.client.email
             self.fields['client_phone'].initial = self.instance.client.phone_number
+
+            # Lock all fields except notes and audio if booking is pending
+            if self.instance.status == 'pending':
+                lock_fields = [
+                    'business_name', 'client_first_name', 'client_last_name', 'client_email', 'client_phone',
+                    'salesman', 'appointment_date', 'appointment_time', 'duration_minutes', 'appointment_type', 'zoom_link'
+                ]
+                for name in lock_fields:
+                    if name in self.fields:
+                        self.fields[name].disabled = True
+                        # Avoid required validation errors for disabled fields that won't post back
+                        self.fields[name].required = False
         
         # Set zoom link from SystemConfig for zoom appointments
         if self.initial.get('appointment_type') == 'zoom':
@@ -360,7 +380,7 @@ class BookingForm(forms.ModelForm):
         appointment_date = cleaned_data.get('appointment_date')
         appointment_time = cleaned_data.get('appointment_time')
         appointment_type = cleaned_data.get('appointment_type')
-        duration_minutes = cleaned_data.get('duration_minutes')
+        duration_minutes = 15  # Force 15 minutes
         zoom_link = cleaned_data.get('zoom_link')
 
         if appointment_type == 'zoom' and not zoom_link:
@@ -368,6 +388,23 @@ class BookingForm(forms.ModelForm):
             
         
         if all([salesman, appointment_date, appointment_time, appointment_type]):
+            # Determine if we should skip availability validation (edit without schedule change or admin editing)
+            skip_availability_checks = False
+            if self.instance and self.instance.pk:
+                original_same = (
+                    self.instance.salesman_id == (salesman.id if hasattr(salesman, 'id') else getattr(salesman, 'pk', salesman)) and
+                    self.instance.appointment_date == appointment_date and
+                    self.instance.appointment_time == appointment_time and
+                    self.instance.appointment_type == appointment_type
+                )
+                if original_same:
+                    skip_availability_checks = True
+            # Admins can bypass availability constraints during edit
+            if self.request and (self.request.user.is_staff or self.request.user.is_superuser) and self.instance and self.instance.pk:
+                skip_availability_checks = True
+
+            if skip_availability_checks:
+                return cleaned_data
             # Get available slots for this day and appointment type
             date = appointment_date
             available_slots = AvailableTimeSlot.objects.filter(
@@ -394,7 +431,7 @@ class BookingForm(forms.ModelForm):
             
             if not time_is_valid:
                 available_times = ", ".join([
-                    f"{slot.start_time.strftime('%I:%M %p')}-{slot.end_time.strftime('%I:%M %p')}" 
+                    f"{slot.start_time.strftime('%I:%M %p')}" #-{slot.end_time.strftime('%I:%M %p')}" 
                     for slot in available_slots
                 ])
                 raise forms.ValidationError(
@@ -402,15 +439,9 @@ class BookingForm(forms.ModelForm):
                     f"{salesman.get_full_name()}'s available times on {appointment_date.strftime('%A')}s: {available_times}"
                 )
             
-            # Calculate duration from timeslot if not provided or override with slot duration
-            if valid_slot:
-                slot_duration = int((datetime.combine(date.min, valid_slot.end_time) - datetime.combine(date.min, valid_slot.start_time)).total_seconds() / 60)
-                # Ensure minimum 15 minutes
-                slot_duration = max(15, slot_duration)
-                if not duration_minutes or duration_minutes != slot_duration:
-                    # Override duration with slot duration
-                    cleaned_data['duration_minutes'] = slot_duration
-                    duration_minutes = slot_duration
+            # Force duration to 15 minutes regardless of slot
+            cleaned_data['duration_minutes'] = 15
+            duration_minutes = 15
             
             # Check for booking conflicts
             if duration_minutes:
@@ -425,6 +456,19 @@ class BookingForm(forms.ModelForm):
                         f"at {conflict_booking.appointment_time.strftime('%I:%M %p')}"
                     )
         
+        # Restrict audio upload to admins only
+        if self.files and self.files.get('audio_file'):
+            if not (self.request and (self.request.user.is_staff or self.request.user.is_superuser)):
+                self.add_error('audio_file', 'Only administrators can upload audio files.')
+
+            # Optional: limit file types to audio
+            uploaded = self.files.get('audio_file')
+            if uploaded and hasattr(uploaded, 'content_type'):
+                if not uploaded.content_type.startswith('audio/'):
+                    self.add_error('audio_file', 'Invalid file type. Please upload an audio file.')
+
+        # Ensure duration is always 15
+        cleaned_data['duration_minutes'] = 15
         return cleaned_data
     
     def save(self, commit=True):
@@ -451,7 +495,22 @@ class BookingForm(forms.ModelForm):
             client.save()
         
         booking.client = client
+
+        # If editing a pending booking, ignore changes to locked fields by restoring original values
+        if booking.pk and booking.status == 'pending':
+            original = Booking.objects.get(pk=booking.pk)
+            booking.salesman = original.salesman
+            booking.appointment_date = original.appointment_date
+            booking.appointment_time = original.appointment_time
+            booking.duration_minutes = original.duration_minutes
+            booking.appointment_type = original.appointment_type
+            booking.zoom_link = original.zoom_link
+            # Restore client details from original client (prevent client mutation here)
+            booking.client = original.client
         
+        # Force duration to 15 minutes at save-time
+        booking.duration_minutes = 15
+
         if not booking.pk:
             booking.created_by = self.request.user if self.request else booking.salesman
             
@@ -464,6 +523,11 @@ class BookingForm(forms.ModelForm):
         
         if commit:
             booking.save()
+            # Save audio if present and user is admin
+            audio = self.files.get('audio_file') if self.files else None
+            if audio and (self.request and (self.request.user.is_staff or self.request.user.is_superuser)):
+                booking.audio_file = audio
+                booking.save(update_fields=['audio_file'])
         
         return booking
 
@@ -493,15 +557,13 @@ class PayrollAdjustmentForm(forms.ModelForm):
         self.payroll_period = kwargs.pop('payroll_period', None)
         super().__init__(*args, **kwargs)
         
-        # Filter employees list to remote agents "on the payroll" for this period
+        # Filter users to remote_agents who are on the payroll
+        self.fields['user'].queryset = User.objects.filter(
+            groups__name='remote_agent',
+            is_active=True
+        ).distinct().order_by('first_name', 'last_name')
+        
         if self.payroll_period:
-            self.fields['user'].queryset = User.objects.filter(
-                groups__name='remote_agent',
-                bookings_created__appointment_date__gte=self.payroll_period.start_date,
-                bookings_created__appointment_date__lte=self.payroll_period.end_date,
-            ).distinct().order_by('last_name', 'first_name')
-
-            # Limit selectable bookings to those in this period (if any are linked)
             self.fields['booking'].queryset = Booking.objects.filter(
                 appointment_date__gte=self.payroll_period.start_date,
                 appointment_date__lte=self.payroll_period.end_date,
@@ -539,12 +601,11 @@ class SystemConfigForm(forms.ModelForm):
 class AvailableTimeSlotForm(forms.ModelForm):
     class Meta:
         model = AvailableTimeSlot
-        fields = ['salesman', 'date', 'start_time', 'end_time', 'appointment_type', 'is_active']
+        fields = ['salesman', 'date', 'start_time', 'appointment_type', 'is_active']
         widgets = {
             'salesman': forms.Select(attrs={'class': 'form-control'}),
             'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'start_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
-            'end_time': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
             'appointment_type': forms.Select(attrs={'class': 'form-control'}),
         }
     
@@ -569,23 +630,18 @@ class AvailableTimeSlotForm(forms.ModelForm):
         
         # Add help text
         self.fields['start_time'].help_text = 'Format: HH:MM (24-hour)'
-        self.fields['end_time'].help_text = 'Format: HH:MM (24-hour)'
     
     def clean(self):
         cleaned_data = super().clean()
         start_time = cleaned_data.get('start_time')
-        end_time = cleaned_data.get('end_time')
         salesman = cleaned_data.get('salesman')
         date = cleaned_data.get('date')
         appointment_type = cleaned_data.get('appointment_type')
         
-        # Validate time range
-        if start_time and end_time:
-            if start_time >= end_time:
-                raise forms.ValidationError("End time must be after start time")
+    
         
         # Check for overlapping slots for the same salesman, day, and type
-        if salesman and date is not None and start_time and end_time and appointment_type:
+        if salesman and date is not None and start_time and appointment_type:
             overlapping = AvailableTimeSlot.objects.filter(
                 salesman=salesman,
                 date=date,
@@ -598,11 +654,11 @@ class AvailableTimeSlotForm(forms.ModelForm):
                 overlapping = overlapping.exclude(pk=self.instance.pk)
             
             # Check for time overlap
-            for slot in overlapping:
+            """for slot in overlapping:
                 if (start_time < slot.end_time and end_time > slot.start_time):
                     raise forms.ValidationError(
                         f"This time slot overlaps with an existing {appointment_type} slot: "
                         f"{slot.start_time.strftime('%I:%M %p')} - {slot.end_time.strftime('%I:%M %p')}"
                     )
-        
+        """
         return cleaned_data
