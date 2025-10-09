@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (User, Client, Booking, 
-                     PayrollPeriod, PayrollAdjustment, CompanyHoliday, 
+                     PayrollPeriod, PayrollAdjustment, 
                      SystemConfig, AuditLog, AvailableTimeSlot)
 
 @admin.register(User)
@@ -32,12 +32,6 @@ admin.site.register(PayrollPeriod)
 
 admin.site.register(PayrollAdjustment)
 
-
-@admin.register(CompanyHoliday)
-class CompanyHolidayAdmin(admin.ModelAdmin):
-    list_display = ['name', 'date', 'is_recurring_annually']
-    list_filter = ['is_recurring_annually', 'date']
-    ordering = ['date']
 
 admin.site.register(SystemConfig)
 

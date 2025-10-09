@@ -14,7 +14,7 @@ from django.contrib.auth.views import (
 import csv
 from django.urls import reverse_lazy
 from .models import (Booking, Client, PayrollPeriod, PayrollAdjustment, 
-                     SystemConfig, AvailableTimeSlot, AuditLog, CompanyHoliday, User)
+                     SystemConfig, AvailableTimeSlot, AuditLog, User)
 from .forms import (LoginForm, BookingForm, CancelBookingForm,
                     PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
 from .decorators import group_required, admin_required, remote_agent_required
@@ -403,11 +403,6 @@ def calendar_view(request):
             day_confirmed_bookings = confirmed_bookings_dict.get(current_date, [])
             day_declined_bookings = declined_bookings_dict.get(current_date, [])
     
-    # Get holidays
-    holidays = CompanyHoliday.objects.filter(
-        date__gte=start_date,
-        date__lte=end_date
-    )
     
     # Get all salesmen for filter (only for admins)
     salesmen = None
@@ -418,7 +413,7 @@ def calendar_view(request):
         )
     
     context = {
-        'holidays': holidays,
+        
         'salesmen': salesmen,
         'current_date': current_date,
         'start_date': start_date,

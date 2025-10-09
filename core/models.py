@@ -424,20 +424,7 @@ class PayrollAdjustment(models.Model):
     def __str__(self):
         return f"{self.adjustment_type} - {self.user.get_full_name()} - ${self.amount}"
 
-class CompanyHoliday(models.Model):
-    name = models.CharField(max_length=100)
-    date = models.DateField()
-    is_recurring_annually = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['date']),
-        ]
-        ordering = ['date']
-    
-    def __str__(self):
-        return f"{self.name} - {self.date}"
+
 
 class SystemConfig(models.Model):
     # Singleton pattern - only one record with id=1
