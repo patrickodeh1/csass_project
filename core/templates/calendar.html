@@ -108,10 +108,23 @@
                                     
                                     {% if is_salesman %}
                                     {% for appt in day_info.appointments|slice:":3" %}
+                                    {# Choose color by booking status so salesmen see pending/confirmed/declined with admin-like colors #}
+                                    {% if appt.status == 'pending' %}
                                     <div class="appointment-card mb-1 w-100 border border-2 rounded p-2" 
-                                        style="cursor: pointer; {% if appt.appointment_type == 'zoom' %}border-color: #334A63 !important; background-color: #d1ecf1;{% else %}border-color: #2C5234 !important; background-color: #e2d9f3;{% endif %}"
+                                        style="cursor: pointer; border-color: #ffc107 !important; background-color: #fff3cd;"
+                                        onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
+                                        title="Pending: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
+                                    {% elif appt.status == 'declined' %}
+                                    <div class="appointment-card mb-1 w-100 border border-2 rounded p-2" 
+                                        style="cursor: pointer; border-color: #28a745 !important; background-color: #d4edda;"
+                                        onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
+                                        title="Declined: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
+                                    {% else %}
+                                    <div class="appointment-card mb-1 w-100 border border-2 rounded p-2" 
+                                        style="cursor: pointer; border-color: #007bff !important; background-color: #cce5ff;"
                                         onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
                                         title="Appointment: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
+                                    {% endif %}
                                         <div class="text-dark fw-semibold small"><i class="bi bi-clock"></i> <strong>{{ appt.appointment_time|date:"g:iA" }}</strong></div>
                                         <div class="text-truncate text-dark small"><i class="bi bi-briefcase"></i> {{ appt.client.business_name }}</div>
                                         <span class="badge small {% if appt.appointment_type == 'zoom' %}bg-info{% else %}bg-primary{% endif %}">
@@ -236,8 +249,16 @@
                         
                         {% if is_salesman %}
                         {% for appt in day_data.appointments|slice:":4" %}
-                        <div class="card mb-2" style="cursor: pointer; border: 2px solid {% if appt.appointment_type == 'zoom' %}#17a2b8{% else %}#6f42c1{% endif %}; background: {% if appt.appointment_type == 'zoom' %}#d1ecf1{% else %}#e2d9f3{% endif %};"
+                        {% if appt.status == 'pending' %}
+                        <div class="card mb-2" style="cursor: pointer; border: 2px solid #ffc107; background: #fff3cd;"
                             onclick="window.location.href='{% url 'booking_detail' appt.id %}'">
+                        {% elif appt.status == 'declined' %}
+                        <div class="card mb-2" style="cursor: pointer; border: 2px solid #28a745; background: #d4edda;"
+                            onclick="window.location.href='{% url 'booking_detail' appt.id %}'">
+                        {% else %}
+                        <div class="card mb-2" style="cursor: pointer; border: 2px solid #007bff; background: #cce5ff;"
+                            onclick="window.location.href='{% url 'booking_detail' appt.id %}'">
+                        {% endif %}
                             <div class="card-body py-2 px-2">
                                 <div class="d-block"><i class="bi bi-clock"></i> <strong>{{ appt.appointment_time|date:"g:i A" }}</strong></div>
                                 <small class="d-block text-truncate"><i class="bi bi-briefcase"></i> {{ appt.client.business_name }}</small>
@@ -336,7 +357,13 @@
                 <div class="mb-3">
                     <h6 class="text-muted"><i class="bi bi-calendar-event"></i> My Appointments</h6>
                     {% for appt in day_appointments %}
-                    <a href="{% url 'booking_detail' appt.id %}" class="list-group-item list-group-item-action" style="border-left: 5px solid {% if appt.appointment_type == 'zoom' %}#17a2b8{% else %}#6f42c1{% endif %};">
+                    {% if appt.status == 'pending' %}
+                    <a href="{% url 'booking_detail' appt.id %}" class="list-group-item list-group-item-action" style="border-left: 5px solid #ffc107;">
+                    {% elif appt.status == 'declined' %}
+                    <a href="{% url 'booking_detail' appt.id %}" class="list-group-item list-group-item-action" style="border-left: 5px solid #28a745;">
+                    {% else %}
+                    <a href="{% url 'booking_detail' appt.id %}" class="list-group-item list-group-item-action" style="border-left: 5px solid #007bff;">
+                    {% endif %}
                         <div class="d-flex w-100 justify-content-between">
                             <h5 class="mb-1">
                                 <i class="bi bi-clock"></i> <strong>{{ appt.appointment_time|date:"g:i A" }}</strong>
@@ -507,6 +534,15 @@
                 </span>
                 <span class="badge bg-primary p-2 text-white fw-semibold">
                     <i class="bi bi-geo-alt"></i> **IN-PERSON**
+                </span>
+                <span class="badge bg-primary p-2 text-white fw-semibold">
+                    <i class="bi bi-check-circle"></i> **Confirmed**
+                </span>
+                <span class="badge bg-warning text-dark p-2 border border-warning fw-semibold">
+                    <i class="bi bi-hourglass-split"></i> **Pending**
+                </span>
+                <span class="badge bg-success text-dark p-2 border border-success fw-semibold">
+                    <i class="bi bi-x-circle"></i> **Declined**
                 </span>
             </div>
         </div>
