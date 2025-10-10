@@ -114,14 +114,14 @@
                                         style="cursor: pointer; border-color: #ffc107 !important; background-color: #fff3cd;"
                                         onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
                                         title="Pending: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
-                                    {% elif appt.status == 'declined' %}
-                                    <div class="appointment-card mb-1 w-100 border border-2 rounded p-2" 
-                                        style="cursor: pointer; border-color: #28a745 !important; background-color: #d4edda;"
-                                        onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
-                                        title="Declined: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
-                                    {% else %}
+                                    {% elif appt.status == 'confirmed' %}
                                     <div class="appointment-card mb-1 w-100 border border-2 rounded p-2" 
                                         style="cursor: pointer; border-color: #007bff !important; background-color: #cce5ff;"
+                                        onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
+                                        title="Confirmed: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
+                                    {% else %}
+                                    <div class="appointment-card mb-1 w-100 border border-2 rounded p-2" 
+                                        style="cursor: pointer; border-color: #28a745 !important; background-color: #d4edda;"
                                         onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
                                         title="Appointment: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
                                     {% endif %}
@@ -186,12 +186,12 @@
                                     
                                     {% for booking in day_info.declined_bookings|slice:":1" %}
                                     <div class="mb-1 w-100" 
-                                        style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #dc3545; background: #f8d7da; padding: 6px 8px; border-radius: 4px;"
+                                        style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #28a745; background: #d4edda; padding: 6px 8px; border-radius: 4px;"
                                         onclick="window.location.href='{% url 'booking_detail' booking.id %}'"
-                                        title="Declined: {{ booking.appointment_time|date:'g:i A' }} - {{ booking.client.business_name }}">
-                                        <div><i class="bi bi-x-circle"></i> <strong>{{ booking.appointment_time|date:"g:iA" }}</strong></div>
+                                        title="Appointment: {{ booking.appointment_time|date:'g:i A' }} - {{ booking.client.business_name }}">
+                                        <div><i class="bi bi-briefcase"></i> <strong>{{ booking.appointment_time|date:"g:iA" }}</strong></div>
                                         <div class="text-truncate"><i class="bi bi-briefcase"></i> {{ booking.client.business_name }}</div>
-                                        <span class="badge bg-danger" style="font-size: 0.65rem;">
+                                        <span class="badge bg-success" style="font-size: 0.65rem;">
                                             {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
                                         </span>
                                     </div>
@@ -252,11 +252,11 @@
                         {% if appt.status == 'pending' %}
                         <div class="card mb-2" style="cursor: pointer; border: 2px solid #ffc107; background: #fff3cd;"
                             onclick="window.location.href='{% url 'booking_detail' appt.id %}'">
-                        {% elif appt.status == 'declined' %}
-                        <div class="card mb-2" style="cursor: pointer; border: 2px solid #28a745; background: #d4edda;"
+                        {% elif appt.status == 'confirmed' %}
+                        <div class="card mb-2" style="cursor: pointer; border: 2px solid #007bff; background: #cce5ff;"
                             onclick="window.location.href='{% url 'booking_detail' appt.id %}'">
                         {% else %}
-                        <div class="card mb-2" style="cursor: pointer; border: 2px solid #007bff; background: #cce5ff;"
+                        <div class="card mb-2" style="cursor: pointer; border: 2px solid #28a745; background: #d4edda;"
                             onclick="window.location.href='{% url 'booking_detail' appt.id %}'">
                         {% endif %}
                             <div class="card-body py-2 px-2">
@@ -334,12 +334,12 @@
                         {% endfor %}
                         
                         {% for booking in day_data.declined_bookings %}
-                        <div class="card border-danger mb-2" style="cursor: pointer; background: #f8d7da;"
+                        <div class="card border-success mb-2" style="cursor: pointer; background: #d4edda;"
                             onclick="window.location.href='{% url 'booking_detail' booking.id %}'">
                             <div class="card-body py-2 px-2">
-                                <div class="d-block"><i class="bi bi-x-circle"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong></div>
+                                <div class="d-block"><i class="bi bi-briefcase"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong></div>
                                 <small class="d-block text-truncate"><i class="bi bi-briefcase"></i> {{ booking.client.business_name }}</small>
-                                <span class="badge bg-danger" style="font-size: 0.65rem;">
+                                <span class="badge bg-success" style="font-size: 0.65rem;">
                                     {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
                                 </span>
                             </div>
@@ -359,10 +359,10 @@
                     {% for appt in day_appointments %}
                     {% if appt.status == 'pending' %}
                     <a href="{% url 'booking_detail' appt.id %}" class="list-group-item list-group-item-action" style="border-left: 5px solid #ffc107;">
-                    {% elif appt.status == 'declined' %}
-                    <a href="{% url 'booking_detail' appt.id %}" class="list-group-item list-group-item-action" style="border-left: 5px solid #28a745;">
-                    {% else %}
+                    {% elif appt.status == 'confirmed' %}
                     <a href="{% url 'booking_detail' appt.id %}" class="list-group-item list-group-item-action" style="border-left: 5px solid #007bff;">
+                    {% else %}
+                    <a href="{% url 'booking_detail' appt.id %}" class="list-group-item list-group-item-action" style="border-left: 5px solid #28a745;">
                     {% endif %}
                         <div class="d-flex w-100 justify-content-between">
                             <h5 class="mb-1">
@@ -475,15 +475,15 @@
                     
                     {% if day_declined_bookings %}
                     <div class="mb-3">
-                        <h6 class="text-muted"><i class="bi bi-x-circle"></i> Declined Bookings</h6>
+                        <h6 class="text-muted"><i class="bi bi-briefcase"></i> Appointments</h6>
                         {% for booking in day_declined_bookings %}
-                        <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action list-group-item-danger" style="border-left: 5px solid #dc3545;">
+                        <a href="{% url 'booking_detail' booking.id %}" class="list-group-item list-group-item-action" style="border-left: 5px solid #28a745; background: #d4edda;">
                             <div class="d-flex w-100 justify-content-between">
-                                <h5 class="mb-1 text-danger">
-                                    <i class="bi bi-x-circle"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong> - {{ booking.business_name }}
+                                <h5 class="mb-1 text-success">
+                                    <i class="bi bi-briefcase"></i> <strong>{{ booking.appointment_time|date:"g:i A" }}</strong> - {{ booking.business_name }}
                                 </h5>
                                 <div class="d-flex gap-1">
-                                    <span class="badge bg-danger" style="font-size: 0.9rem;">DECLINED</span>
+                                    <span class="badge bg-success" style="font-size: 0.9rem;">APPOINTMENT</span>
                                     {% if booking.appointment_type == 'zoom' %}
                                         <span class="badge bg-info" style="font-size: 0.9rem; background: #17a2b8; color: white;"><i class="bi bi-camera-video"></i> ZOOM</span>
                                     {% else %}
@@ -542,7 +542,7 @@
                     <i class="bi bi-hourglass-split"></i> **Pending**
                 </span>
                 <span class="badge bg-success text-dark p-2 border border-success fw-semibold">
-                    <i class="bi bi-x-circle"></i> **Declined**
+                    <i class="bi bi-briefcase"></i> **Appointment**
                 </span>
             </div>
         </div>
@@ -563,8 +563,8 @@
                 <span class="badge bg-warning text-dark p-2 border border-warning fw-semibold">
                     <i class="bi bi-hourglass-split"></i> **Pending Booking**
                 </span>
-                <span class="badge bg-danger p-2 border border-danger text-white fw-semibold">
-                    <i class="bi bi-x-circle"></i> **Declined Booking**
+                <span class="badge bg-success text-dark p-2 border border-success fw-semibold">
+                    <i class="bi bi-briefcase"></i> **Appointment**
                 </span>
                 <span class="badge bg-info p-2 text-white fw-semibold">
                     <i class="bi bi-camera-video"></i> **ZOOM** (Virtual)
