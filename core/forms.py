@@ -472,64 +472,65 @@ class BookingForm(forms.ModelForm):
         return cleaned_data
     
     def save(self, commit=True):
-        booking = super().save(commit=False)
-        
-        # Get or create client
-        client, created = Client.objects.get_or_create(
-            email=self.cleaned_data['client_email'],
-            defaults={
-                'business_name': self.cleaned_data['business_name'],
-                'first_name': self.cleaned_data['client_first_name'],
-                'last_name': self.cleaned_data['client_last_name'],
-                'phone_number': self.cleaned_data['client_phone'],
-                'created_by': self.request.user if self.request else booking.salesman
-            }
-        )
-        
-        if not created:
-            # Update existing client info
-            client.business_name = self.cleaned_data['business_name']
-            client.first_name = self.cleaned_data['client_first_name']
-            client.last_name = self.cleaned_data['client_last_name']
-            client.phone_number = self.cleaned_data['client_phone']
-            client.save()
-        
-        booking.client = client
+    booking = super().save(commit=False)
+    
+    # Get or create client
+    client, created = Client.objects.get_or_create(
+        email=self.cleaned_data['client_email'],
+        defaults={
+            'business_name': self.cleaned_data['business_name'],
+            'first_name': self.cleaned_data['client_first_name'],
+            'last_name': self.cleaned_data['client_last_name'],
+            'phone_number': self.cleaned_data['client_phone'],
+            'created_by': self.request.user if self.request else booking.salesman
+        }
+    )
+    
+    if not created:
+        # Update existing client info
+        client.business_name = self.cleaned_data['business_name']
+        client.first_name = self.cleaned_data['client_first_name']
+        client.last_name = self.cleaned_data['client_last_name']
+        client.phone_number = self.cleaned_data['client_phone']
+        client.save()
+    
+    booking.client = client
 
-        # If editing a pending booking, ignore changes to locked fields by restoring original values
-        if booking.pk and booking.status == 'pending':
-            original = Booking.objects.get(pk=booking.pk)
-            booking.salesman = original.salesman
-            booking.appointment_date = original.appointment_date
-            booking.appointment_time = original.appointment_time
-            booking.duration_minutes = original.duration_minutes
-            booking.appointment_type = original.appointment_type
-            booking.zoom_link = original.zoom_link
-            # Restore client details from original client (prevent client mutation here)
-            booking.client = original.client
-        
-        # Force duration to 15 minutes at save-time
-        booking.duration_minutes = 15
+    # If editing a pending booking, ignore changes to locked fields by restoring original values
+    if booking.pk and booking.status == 'pending':
+        original = Booking.objects.get(pk=booking.pk)
+        booking.salesman = original.salesman
+        booking.appointment_date = original.appointment_date
+        booking.appointment_time = original.appointment_time
+        booking.duration_minutes = original.duration_minutes
+        booking.appointment_type = original.appointment_type
+        booking.zoom_link = original.zoom_link
+        # Restore client details from original client (prevent client mutation here)
+        booking.client = original.client
+    
+    # Force duration to 15 minutes at save-time
+    booking.duration_minutes = 15
 
-        if not booking.pk:
-            booking.created_by = self.request.user if self.request else booking.salesman
-            
-            if self.request and self.request.user.groups.filter(name='remote_agent').exists():
-                booking.status = 'pending'  # Requires admin approval
-            else:
-                booking.status = 'confirmed'  # Admin/staff bookings auto-confirm
+    # Handle audio file BEFORE the first save
+    audio = self.files.get('audio_file') if self.files else None
+    if audio and (self.request and (self.request.user.is_staff or self.request.user.is_superuser)):
+        booking.audio_file = audio
+
+    if not booking.pk:
+        booking.created_by = self.request.user if self.request else booking.salesman
+        
+        if self.request and self.request.user.groups.filter(name='remote_agent').exists():
+            booking.status = 'pending'  # Requires admin approval
         else:
-            booking.updated_by = self.request.user if self.request else booking.salesman
-        
-        if commit:
-            booking.save()
-            # Save audio if present and user is admin
-            audio = self.files.get('audio_file') if self.files else None
-            if audio and (self.request and (self.request.user.is_staff or self.request.user.is_superuser)):
-                booking.audio_file = audio
-                booking.save(update_fields=['audio_file'])
-        
-        return booking
+            booking.status = 'confirmed'  # Admin/staff bookings auto-confirm
+    else:
+        booking.updated_by = self.request.user if self.request else booking.salesman
+    
+    if commit:
+        booking.save()
+    
+    return booking
+    
 
 class CancelBookingForm(forms.Form):
     cancellation_reason = forms.ChoiceField(
