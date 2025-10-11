@@ -1,20 +1,25 @@
 import os
 from pathlib import Path
-from decouple import config
+from decouple import config, UndefinedValueError
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Detect if running on Cloud Run
 IS_CLOUD_RUN = os.getenv('K_SERVICE') is not None
 
+# Detect if we're in Docker build (collectstatic phase)
+IS_BUILDING = os.getenv('SECRET_KEY') == 'temp-build-key'
+
 # SECRET_KEY - use environment variable in production
 if IS_CLOUD_RUN:
     SECRET_KEY = os.getenv('SECRET_KEY')
+elif IS_BUILDING:
+    SECRET_KEY = 'temp-build-key'
 else:
     SECRET_KEY = config('SECRET_KEY')
 
 # DEBUG - always False in production
-if IS_CLOUD_RUN:
+if IS_CLOUD_RUN or IS_BUILDING:
     DEBUG = False
 else:
     DEBUG = config('DEBUG', default=False, cast=bool)
@@ -70,7 +75,15 @@ TEMPLATES = [
 WSGI_APPLICATION = 'csass_project.wsgi.application'
 
 # Database Configuration
-if IS_CLOUD_RUN:
+if IS_BUILDING:
+    # During Docker build, use a dummy database (won't be accessed)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+elif IS_CLOUD_RUN:
     # Production - Cloud SQL
     DATABASES = {
         'default': {
@@ -105,21 +118,26 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = config('TIMEZONE', default='America/New_York') if not IS_CLOUD_RUN else os.getenv('TIMEZONE', 'America/New_York')
+if IS_BUILDING:
+    TIME_ZONE = 'America/New_York'
+elif IS_CLOUD_RUN:
+    TIME_ZONE = os.getenv('TIMEZONE', 'America/New_York')
+else:
+    TIME_ZONE = config('TIMEZONE', default='America/New_York')
 USE_I18N = True
 USE_TZ = True
 
 # Static Files Configuration
 STATIC_URL = '/static/'
-STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+if not IS_CLOUD_RUN and not IS_BUILDING:
+    # Only use STATICFILES_DIRS in local development
+    if (BASE_DIR / 'static').exists():
+        STATICFILES_DIRS = [BASE_DIR / 'static']
+
 # WhiteNoise configuration for serving static files
-STORAGEBACKEND_CONFIGS = {
-    'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
-}
-if not DEBUG:
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media Files Configuration
 if IS_CLOUD_RUN:
@@ -144,7 +162,10 @@ LOGOUT_REDIRECT_URL = 'login'
 
 # Email Configuration
 EMAIL_BACKEND = "sendgrid_backend.SendgridBackend"
-if IS_CLOUD_RUN:
+if IS_BUILDING:
+    SENDGRID_API_KEY = 'temp-build-key'
+    DEFAULT_FROM_EMAIL = 'temp@example.com'
+elif IS_CLOUD_RUN:
     SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
     DEFAULT_FROM_EMAIL = os.getenv("FROM_EMAIL")
 else:
@@ -167,7 +188,6 @@ MAX_LOGIN_ATTEMPTS = 5
 EMAIL_TIMEOUT = 5
 
 # Security Settings for Production
-# Security Settings for Production
 if IS_CLOUD_RUN:
     # Cloud Run terminates SSL at the load balancer
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -176,8 +196,8 @@ if IS_CLOUD_RUN:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
-    # Don't use SECURE_SSL_REDIRECT with Cloud Run
 else:
     # Disable password validators and enable sandbox mode for development
-    AUTH_PASSWORD_VALIDATORS = []
-    SENDGRID_SANDBOX_MODE_IN_DEBUG = False
+    if not IS_BUILDING:
+        AUTH_PASSWORD_VALIDATORS = []
+        SENDGRID_SANDBOX_MODE_IN_DEBUG = False
