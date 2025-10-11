@@ -529,7 +529,7 @@ class BookingForm(forms.ModelForm):
     if commit:
         booking.save()
     
-    return booking
+        return booking
     
 
 class CancelBookingForm(forms.Form):
