@@ -1021,21 +1021,21 @@ def commissions_view(request):
         appointment_date__lte=end_date
     ).select_related('client', 'salesman').order_by('-appointment_date', '-appointment_time')
     
-    # Separate bookings by status
-    confirmed_bookings = all_bookings.filter(status__in=['confirmed', 'completed'])
-    pending_bookings = all_bookings.filter(status='pending')
-    declined_bookings = all_bookings.filter(status='declined')
+    # Separate bookings by status - EVALUATE QUERYSETS EXPLICITLY
+    confirmed_bookings = list(all_bookings.filter(status__in=['confirmed', 'completed']))
+    pending_bookings = list(all_bookings.filter(status='pending'))
+    declined_bookings = list(all_bookings.filter(status='declined'))
     
     # Calculate totals for confirmed/completed (these count toward commission)
     total_commission = sum(b.commission_amount for b in confirmed_bookings)
-    total_bookings = confirmed_bookings.count()
+    total_bookings = len(confirmed_bookings)
     
     # Calculate totals for pending (these don't count yet but should be visible)
-    pending_count = pending_bookings.count()
+    pending_count = len(pending_bookings)
     pending_commission = sum(b.commission_amount for b in pending_bookings)
     
     # Count declined bookings
-    declined_count = declined_bookings.count()
+    declined_count = len(declined_bookings)
     
     # Check if period is finalized
     payroll_period = PayrollPeriod.objects.filter(
@@ -1063,6 +1063,7 @@ def commissions_view(request):
     }
     
     return render(request, 'commissions.html', context)
+
 # ============================================================
 # Availability Views
 # ============================================================
