@@ -472,29 +472,29 @@ class BookingForm(forms.ModelForm):
         return cleaned_data
     
     def save(self, commit=True):
-    booking = super().save(commit=False)
-    
-    # Get or create client
-    client, created = Client.objects.get_or_create(
-        email=self.cleaned_data['client_email'],
-        defaults={
-            'business_name': self.cleaned_data['business_name'],
-            'first_name': self.cleaned_data['client_first_name'],
-            'last_name': self.cleaned_data['client_last_name'],
-            'phone_number': self.cleaned_data['client_phone'],
-            'created_by': self.request.user if self.request else booking.salesman
-        }
-    )
-    
-    if not created:
-        # Update existing client info
-        client.business_name = self.cleaned_data['business_name']
-        client.first_name = self.cleaned_data['client_first_name']
-        client.last_name = self.cleaned_data['client_last_name']
-        client.phone_number = self.cleaned_data['client_phone']
-        client.save()
-    
-    booking.client = client
+        booking = super().save(commit=False)
+        
+        # Get or create client
+        client, created = Client.objects.get_or_create(
+            email=self.cleaned_data['client_email'],
+            defaults={
+                'business_name': self.cleaned_data['business_name'],
+                'first_name': self.cleaned_data['client_first_name'],
+                'last_name': self.cleaned_data['client_last_name'],
+                'phone_number': self.cleaned_data['client_phone'],
+                'created_by': self.request.user if self.request else booking.salesman
+            }
+        )
+        
+        if not created:
+            # Update existing client info
+            client.business_name = self.cleaned_data['business_name']
+            client.first_name = self.cleaned_data['client_first_name']
+            client.last_name = self.cleaned_data['client_last_name']
+            client.phone_number = self.cleaned_data['client_phone']
+            client.save()
+        
+        booking.client = client
 
     # If editing a pending booking, ignore changes to locked fields by restoring original values
     if booking.pk and booking.status == 'pending':
