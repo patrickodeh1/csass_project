@@ -139,13 +139,20 @@ if (BASE_DIR / 'static').exists():
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media Files Configuration
-if IS_CLOUD_RUN:
+# Media Files Configuration
+if IS_BUILDING:
+    # During build, don't use GCS at all
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+elif IS_CLOUD_RUN:
     # Use Google Cloud Storage for media files in production
     DEFAULT_FILE_STORAGE = 'storages.backends.gcs.GSGoogleCloudStorage'
     GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', 'csass-474705-media')
     GS_PROJECT_ID = 'csass-474705'
     GS_AUTO_CREATE_BUCKET = False
     GS_DEFAULT_ACL = 'publicRead'
+    GS_FILE_OVERWRITE = False
+    GS_QUERYSTRING_AUTH = False
     MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
 else:
     # Local development - use local filesystem
