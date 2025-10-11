@@ -17,8 +17,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Create staticfiles directory
+RUN mkdir -p staticfiles
+
+# Set environment variable for collectstatic
+ENV DEBUG=False
+ENV SECRET_KEY=temp-build-key
+
 # Collect static files
-RUN python manage.py collectstatic --noinput || true
+RUN python manage.py collectstatic --noinput --clear
 
 # Create empty media directory
 RUN mkdir -p media
