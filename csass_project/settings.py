@@ -20,7 +20,7 @@ else:
 
 # DEBUG - always False in production
 if IS_CLOUD_RUN or IS_BUILDING:
-    DEBUG = False
+    DEBUG = True
 else:
     DEBUG = config('DEBUG', default=False, cast=bool)
 
