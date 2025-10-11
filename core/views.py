@@ -1015,24 +1015,26 @@ def commissions_view(request):
     end_date = start_date + timedelta(days=6)
     
     # Only show bookings created by this remote agent
-    bookings = Booking.objects.filter(
+    all_bookings = Booking.objects.filter(
         created_by=request.user,
         appointment_date__gte=start_date,
         appointment_date__lte=end_date
     ).select_related('client', 'salesman').order_by('-appointment_date', '-appointment_time')
     
-    # Calculate totals - only confirmed/completed count
-    confirmed_bookings = bookings.filter(status__in=['confirmed', 'completed'])
+    # Separate bookings by status
+    confirmed_bookings = all_bookings.filter(status__in=['confirmed', 'completed'])
+    pending_bookings = all_bookings.filter(status='pending')
+    declined_bookings = all_bookings.filter(status='declined')
+    
+    # Calculate totals for confirmed/completed (these count toward commission)
     total_commission = sum(b.commission_amount for b in confirmed_bookings)
     total_bookings = confirmed_bookings.count()
     
-    # Count pending bookings separately
-    pending_bookings = bookings.filter(status='pending')
+    # Calculate totals for pending (these don't count yet but should be visible)
     pending_count = pending_bookings.count()
     pending_commission = sum(b.commission_amount for b in pending_bookings)
     
     # Count declined bookings
-    declined_bookings = bookings.filter(status='declined')
     declined_count = declined_bookings.count()
     
     # Check if period is finalized
@@ -1044,7 +1046,10 @@ def commissions_view(request):
     available_weeks = get_payroll_periods(12)
     
     context = {
-        'bookings': bookings,
+        'bookings': all_bookings,  # All bookings to display
+        'confirmed_bookings': confirmed_bookings,  # Explicitly pass these too
+        'pending_bookings': pending_bookings,      # Explicitly pass pending
+        'declined_bookings': declined_bookings,    # Explicitly pass declined
         'total_commission': total_commission,
         'total_bookings': total_bookings,
         'pending_count': pending_count,
