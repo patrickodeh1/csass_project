@@ -3,9 +3,27 @@ from pathlib import Path
 from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-SECRET_KEY = config('SECRET_KEY')
-DEBUG = config('DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS = ['*']
+
+# Detect if running on Cloud Run
+IS_CLOUD_RUN = os.getenv('K_SERVICE') is not None
+
+# SECRET_KEY - use environment variable in production
+if IS_CLOUD_RUN:
+    SECRET_KEY = os.getenv('SECRET_KEY')
+else:
+    SECRET_KEY = config('SECRET_KEY')
+
+# DEBUG - always False in production
+if IS_CLOUD_RUN:
+    DEBUG = False
+else:
+    DEBUG = config('DEBUG', default=False, cast=bool)
+
+# ALLOWED_HOSTS
+if IS_CLOUD_RUN:
+    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
+else:
+    ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -16,11 +34,13 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'crispy_forms',
     'crispy_bootstrap5',
+    'storages',  # For Google Cloud Storage
     'core',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # For static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -49,24 +69,30 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'csass_project.wsgi.application'
 
-"""DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DATABASE_NAME'),
-        'USER': config('DATABASE_USER'),
-        'PASSWORD': config('DATABASE_PASSWORD'),
-        'HOST': config('DATABASE_HOST', default='localhost'),
-        'PORT': config('DATABASE_PORT', default='5432'),
+# Database Configuration
+if IS_CLOUD_RUN:
+    # Production - Cloud SQL
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'HOST': f'/cloudsql/{os.getenv("CLOUD_SQL_CONNECTION_NAME")}',
+            'USER': os.getenv('DB_USER'),
+            'PASSWORD': os.getenv('DB_PASSWORD'),
+            'NAME': os.getenv('DB_NAME'),
+        }
     }
-}"""
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+else:
+    # Local Development
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DATABASE_NAME', default='postgres'),
+            'USER': config('DATABASE_USER', default='csassadmin'),
+            'PASSWORD': config('DATABASE_PASSWORD'),
+            'HOST': config('DATABASE_HOST', default='localhost'),
+            'PORT': config('DATABASE_PORT', default='5432'),
+        }
     }
-}
-
 
 # CUSTOM USER MODEL - CRITICAL SETTING
 AUTH_USER_MODEL = 'core.User'
@@ -79,16 +105,35 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = config('TIMEZONE', default='UTC')
+TIME_ZONE = config('TIMEZONE', default='America/New_York') if not IS_CLOUD_RUN else os.getenv('TIMEZONE', 'America/New_York')
 USE_I18N = True
 USE_TZ = True
 
+# Static Files Configuration
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# WhiteNoise configuration for serving static files
+STORAGEBACKEND_CONFIGS = {
+    'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+}
+if not DEBUG:
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Media Files Configuration
+if IS_CLOUD_RUN:
+    # Use Google Cloud Storage for media files in production
+    DEFAULT_FILE_STORAGE = 'storages.backends.gcs.GSGoogleCloudStorage'
+    GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', 'csass-474705-media')
+    GS_PROJECT_ID = 'csass-474705'
+    GS_AUTO_CREATE_BUCKET = False
+    GS_DEFAULT_ACL = 'publicRead'
+    MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
+else:
+    # Local development - use local filesystem
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -99,8 +144,12 @@ LOGOUT_REDIRECT_URL = 'login'
 
 # Email Configuration
 EMAIL_BACKEND = "sendgrid_backend.SendgridBackend"
-SENDGRID_API_KEY = config("SENDGRID_API_KEY")
-DEFAULT_FROM_EMAIL = config("FROM_EMAIL")
+if IS_CLOUD_RUN:
+    SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+    DEFAULT_FROM_EMAIL = os.getenv("FROM_EMAIL")
+else:
+    SENDGRID_API_KEY = config("SENDGRID_API_KEY")
+    DEFAULT_FROM_EMAIL = config("FROM_EMAIL")
 
 # Password Reset Settings
 PASSWORD_RESET_TIMEOUT = 86400  # 24 hours in seconds
@@ -115,7 +164,17 @@ SESSION_SAVE_EVERY_REQUEST = True
 
 # Custom Settings
 MAX_LOGIN_ATTEMPTS = 5
-
 EMAIL_TIMEOUT = 5
-AUTH_PASSWORD_VALIDATORS = []
-SENDGRID_SANDBOX_MODE_IN_DEBUG = False
+
+# Security Settings for Production
+if IS_CLOUD_RUN:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+else:
+    # Disable password validators and enable sandbox mode for development
+    AUTH_PASSWORD_VALIDATORS = []
+    SENDGRID_SANDBOX_MODE_IN_DEBUG = False
