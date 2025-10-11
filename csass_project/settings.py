@@ -5,7 +5,7 @@ from decouple import config, UndefinedValueError
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Detect if running on Cloud Run
-IS_CLOUD_RUN = os.getenv('K_SERVICE') is not None
+IS_CLOUD_RUN = os.getenv('IS_CLOUD_RUN', 'false').lower() == 'true'
 
 # Detect if we're in Docker build (collectstatic phase)
 IS_BUILDING = os.getenv('SECRET_KEY') == 'temp-build-key'
@@ -139,20 +139,13 @@ if (BASE_DIR / 'static').exists():
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media Files Configuration
-# Media Files Configuration
-if IS_BUILDING:
-    # During build, don't use GCS at all
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
-elif IS_CLOUD_RUN:
+if IS_CLOUD_RUN:
     # Use Google Cloud Storage for media files in production
-    DEFAULT_FILE_STORAGE = 'storages.backends.gcs.GSGoogleCloudStorage'
+    DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
     GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', 'csass-474705-media')
     GS_PROJECT_ID = 'csass-474705'
     GS_AUTO_CREATE_BUCKET = False
     GS_DEFAULT_ACL = 'publicRead'
-    GS_FILE_OVERWRITE = False
-    GS_QUERYSTRING_AUTH = False
     MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
 else:
     # Local development - use local filesystem
