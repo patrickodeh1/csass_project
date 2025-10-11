@@ -24,7 +24,7 @@ steps:
       - '--add-cloudsql-instances'
       - 'csass-474705:us-central1:csass-474705'
       - '--set-env-vars'
-      - 'CLOUD_SQL_CONNECTION_NAME=csass-474705:us-central1:csass-474705,DB_NAME=postgres,DB_USER=csassadmin,GS_BUCKET_NAME=csass-474705-media,TIMEZONE=America/New_York,FROM_EMAIL=soarersoar@gmail.com,ALLOWED_HOSTS=*'
+      - 'IS_CLOUD_RUN=true,CLOUD_SQL_CONNECTION_NAME=csass-474705:us-central1:csass-474705,DB_NAME=postgres,DB_USER=csassadmin,GS_BUCKET_NAME=csass-474705-media,TIMEZONE=America/New_York,FROM_EMAIL=soarersoar@gmail.com,ALLOWED_HOSTS=*'
       - '--set-secrets'
       - 'DB_PASSWORD=DB_PASSWORD:latest,SECRET_KEY=SECRET_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest'
       - '--memory'
