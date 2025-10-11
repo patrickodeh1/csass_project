@@ -131,10 +131,9 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-if not IS_CLOUD_RUN and not IS_BUILDING:
-    # Only use STATICFILES_DIRS in local development
-    if (BASE_DIR / 'static').exists():
-        STATICFILES_DIRS = [BASE_DIR / 'static']
+# Always include static folder if it exists (needed for collectstatic)
+if (BASE_DIR / 'static').exists():
+    STATICFILES_DIRS = [BASE_DIR / 'static']
 
 # WhiteNoise configuration for serving static files
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
