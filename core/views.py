@@ -1043,7 +1043,7 @@ def commissions_view(request):
         end_date=end_date
     ).first()
     
-    available_weeks = get_payroll_periods(12)
+    available_weeks = get_payroll_periods(3)
     
     context = {
         'bookings': all_bookings,  # All bookings to display

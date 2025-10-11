@@ -20,7 +20,7 @@ def get_current_payroll_period():
         'end_date': period_end
     }
 
-def get_payroll_periods(weeks=12):
+def get_payroll_periods(weeks=3):
     """Get list of recent payroll periods"""
     periods = []
     current = get_current_payroll_period()
