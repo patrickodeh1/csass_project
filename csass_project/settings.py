@@ -12,9 +12,6 @@ IS_BUILDING = os.getenv('SECRET_KEY') == 'temp-build-key'
 
 # SECRET_KEY - use environment variable in production
 if IS_CLOUD_RUN:
-    print("🌩️  Running on Cloud Run:", IS_CLOUD_RUN)
-    print("🪣  Using bucket:", os.getenv("GS_BUCKET_NAME"))
-
     SECRET_KEY = os.getenv('SECRET_KEY')
 elif IS_BUILDING:
     SECRET_KEY = 'temp-build-key'
@@ -144,8 +141,8 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # Media Files Configuration
 if IS_CLOUD_RUN:
     # Use Google Cloud Storage for media files in production
-    DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
-    GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', 'csass-474705-media')
+    DEFAULT_FILE_STORAGE = 'storages.backends.gcs.GSGoogleCloudStorage'
+    GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', 'csass-media-474705')
     GS_PROJECT_ID = 'csass-474705'
     GS_AUTO_CREATE_BUCKET = False
     GS_DEFAULT_ACL = 'publicRead'
