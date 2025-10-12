@@ -5,7 +5,8 @@ from django.utils import timezone
 from decimal import Decimal
 from datetime import datetime, timedelta, time
 import uuid
-from storages.backends.gcs import GSGoogleCloudStorage
+if not os.getenv("IS_BUILDING"): 
+    from storages.backends.gcs import GSGoogleCloudStorage
 
 
 def get_media_storage():
