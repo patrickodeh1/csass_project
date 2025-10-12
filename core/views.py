@@ -1236,14 +1236,21 @@ def payroll_view(request):
     # Get available periods
     available_periods = get_payroll_periods(12)
     
+    # Calculate summary totals
+    user_commissions_list = list(user_commissions.values())
+    total_commission = sum(uc['total'] for uc in user_commissions_list)
+    total_bookings = sum(uc['count'] for uc in user_commissions_list)
+    
     context = {
         'payroll_period': payroll_period,
-        'user_commissions': user_commissions.values(),
+        'user_commissions': user_commissions_list,
         'adjustments': adjustments,
         'start_date': start_date,
         'end_date': end_date,
         'available_periods': available_periods,
         'can_finalize': payroll_period.status == 'pending',
+        'total_commission': total_commission,
+        'total_bookings': total_bookings,
     }
     
     return render(request, 'payroll.html', context)

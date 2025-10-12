@@ -64,7 +64,7 @@
             <div class="card bg-primary text-white shadow">
                 <div class="card-body">
                     <h6 class="card-title">Total Commission</h6>
-                    <h3 class="mb-0">${{ total_commission }}</h3>
+                    <h3 class="mb-0">${{ total_commission|default:"0.00" }}</h3>
                 </div>
             </div>
         </div>
@@ -72,7 +72,7 @@
             <div class="card bg-success text-white shadow">
                 <div class="card-body">
                     <h6 class="card-title">Total Bookings</h6>
-                    <h3 class="mb-0">{{ total_bookings }}</h3>
+                    <h3 class="mb-0">{{ total_bookings|default:"0" }}</h3>
                 </div>
             </div>
         </div>
