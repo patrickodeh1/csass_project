@@ -6,8 +6,12 @@ from django.utils import timezone
 from decimal import Decimal
 from datetime import datetime, timedelta, time
 import uuid
-if not os.getenv("IS_BUILDING"): 
-    from storages.backends.gcloud import GoogleCloudStorage
+
+if os.getenv('IS_CLOUD_RUN', 'false').lower() == 'true':
+    DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
+else:
+    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+
 
 
 def get_media_storage():
@@ -217,12 +221,7 @@ class Booking(models.Model):
     zoom_link = models.URLField(blank=True)
     notes = models.TextField(blank=True)
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    audio_file = models.FileField(
-        upload_to='booking_audio/', 
-        null=True, 
-        blank=True,
-        storage=get_media_storage
-    )
+    audio_file = models.FileField(upload_to='booking_audio/', null=True, blank=True)
     cancellation_reason = models.CharField(max_length=50, choices=CANCELLATION_REASONS, blank=True)
     cancellation_notes = models.TextField(blank=True)
     canceled_at = models.DateTimeField(null=True, blank=True)
