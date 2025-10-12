@@ -5,6 +5,15 @@ from django.utils import timezone
 from decimal import Decimal
 from datetime import datetime, timedelta, time
 import uuid
+from storages.backends.gcs import GSGoogleCloudStorage
+
+
+def get_media_storage():
+    """Returns the appropriate storage backend for media files"""
+    if os.getenv('IS_CLOUD_RUN', 'false').lower() == 'true':
+        return GSGoogleCloudStorage()
+    return None 
+
 
 class UserManager(BaseUserManager):
     """Custom user manager for email-based authentication"""
@@ -206,7 +215,12 @@ class Booking(models.Model):
     zoom_link = models.URLField(blank=True)
     notes = models.TextField(blank=True)
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    audio_file = models.FileField(upload_to='booking_audio/', null=True, blank=True)
+    audio_file = models.FileField(
+        upload_to='booking_audio/', 
+        null=True, 
+        blank=True,
+        storage=get_media_storage
+    )
     cancellation_reason = models.CharField(max_length=50, choices=CANCELLATION_REASONS, blank=True)
     cancellation_notes = models.TextField(blank=True)
     canceled_at = models.DateTimeField(null=True, blank=True)
