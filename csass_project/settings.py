@@ -46,7 +46,7 @@ elif IS_CLOUD_RUN:
     # Use Google Cloud Storage for media files in production
     STORAGES = {
         "default": {
-            "BACKEND": "storages.backends.gcs.GSGoogleCloudStorage",
+            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
         },
         "staticfiles": {
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
