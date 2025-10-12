@@ -21,7 +21,7 @@ COPY . .
 RUN mkdir -p staticfiles
 
 # Set environment variable for collectstatic
-ENV DEBUG=True
+ENV DEBUG=False
 ENV SECRET_KEY=temp-build-key
 
 # Collect static files
