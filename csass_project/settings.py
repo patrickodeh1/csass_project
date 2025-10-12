@@ -229,3 +229,14 @@ else:
     if not IS_BUILDING:
         AUTH_PASSWORD_VALIDATORS = []
         SENDGRID_SANDBOX_MODE_IN_DEBUG = False
+
+
+# === Google Cloud Storage Settings ===
+if os.getenv("IS_CLOUD_RUN", "false").lower() == "true":
+    DEFAULT_FILE_STORAGE = "storages.backends.gcloud.GoogleCloudStorage"
+    GS_BUCKET_NAME = os.getenv("GS_BUCKET_NAME", "csass-media-474705")
+    GS_DEFAULT_ACL = "publicRead"
+    GS_PROJECT_ID = os.getenv("GS_PROJECT_ID", "csass-474705")
+else:
+    # Local fallback storage
+    DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
