@@ -58,30 +58,33 @@
         </div>
     </div>
 
-    <!-- Total Commission -->
-<div class="col-md-3">
-    <div class="card bg-primary text-white shadow">
-        <div class="card-body">
-            <h6 class="card-title">Total Commission</h6>
-            <h3 class="mb-0">
-                ${{ user_commissions.0.total|floatformat:0 }}
-            </h3>
-        </div>
-    </div>
-</div>
-
-    <!-- Total Bookings -->
-    <div class="col-md-3">
-        <div class="card bg-success text-white shadow">
-            <div class="card-body">
-                <h6 class="card-title">Total Bookings</h6>
-                <h3 class="mb-0">
-                    {{ user_commissions.0.count|add:0 }}
-                </h3>
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white shadow">
+                <div class="card-body">
+                    <h6 class="card-title">Total Commission</h6>
+                    <h3 class="mb-0">
+                        ${% widthratio user_commissions|length 1 1 as total %}
+                        {% for uc in user_commissions %}
+                            {{ uc.total|add: }}
+                        {% endfor %}
+                    </h3>
+                </div>
             </div>
         </div>
-    </div>
-
+        <div class="col-md-3">
+            <div class="card bg-success text-white shadow">
+                <div class="card-body">
+                    <h6 class="card-title">Total Bookings</h6>
+                    <h3 class="mb-0">
+                        {% for uc in user_commissions %}
+                            {{ uc.count|add: }}
+                        {% endfor %}
+                    </h3>
+                </div>
+            </div>
+        </div>
         <div class="col-md-3">
             <div class="card bg-info text-white shadow">
                 <div class="card-body">
