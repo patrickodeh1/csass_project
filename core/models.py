@@ -7,10 +7,21 @@ from decimal import Decimal
 from datetime import datetime, timedelta, time
 import uuid
 
-if os.getenv('IS_CLOUD_RUN', 'false').lower() == 'true':
-    DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
-else:
-    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+def get_media_storage():
+    """Return appropriate storage backend for media files."""
+    is_cloud_run = os.getenv('IS_CLOUD_RUN', 'false').lower() == 'true'
+    is_building = os.getenv('IS_BUILDING', 'false').lower() == 'true'
+
+    if is_cloud_run and not is_building:
+        try:
+            from storages.backends.gcloud import GoogleCloudStorage
+            print("✅ Using GoogleCloudStorage for media files")
+            return GoogleCloudStorage()
+        except Exception as e:
+            print(f"⚠️ Could not import GoogleCloudStorage: {e}")
+            return None
+    else:
+        return None
 
 
 
