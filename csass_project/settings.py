@@ -30,6 +30,47 @@ if IS_CLOUD_RUN:
 else:
     ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
 
+# Media Files Configuration  
+if IS_BUILDING:
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+elif IS_CLOUD_RUN:
+    # Use Google Cloud Storage for media files in production
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.gcs.GSGoogleCloudStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+    GS_BUCKET_NAME = 'csass-media-474705'
+    GS_PROJECT_ID = 'csass-474705'
+    GS_DEFAULT_ACL = 'publicRead'
+    GS_FILE_OVERWRITE = False
+    GS_QUERYSTRING_AUTH = False
+    MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
+else:
+    # Local development
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -136,21 +177,9 @@ if (BASE_DIR / 'static').exists():
     STATICFILES_DIRS = [BASE_DIR / 'static']
 
 # WhiteNoise configuration for serving static files
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+#STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Media Files Configuration
-if IS_CLOUD_RUN:
-    # Use Google Cloud Storage for media files in production
-    DEFAULT_FILE_STORAGE = 'storages.backends.gcs.GSGoogleCloudStorage'
-    GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', 'csass-media-474705')
-    GS_PROJECT_ID = 'csass-474705'
-    GS_AUTO_CREATE_BUCKET = False
-    GS_DEFAULT_ACL = 'publicRead'
-    MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
-else:
-    # Local development - use local filesystem
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
+
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
