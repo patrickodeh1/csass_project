@@ -7,13 +7,13 @@ from decimal import Decimal
 from datetime import datetime, timedelta, time
 import uuid
 if not os.getenv("IS_BUILDING"): 
-    from storages.backends.gcs import GSGoogleCloudStorage
+    from storages.backends.gcloud import GoogleCloudStorage
 
 
 def get_media_storage():
     """Returns the appropriate storage backend for media files"""
     if os.getenv('IS_CLOUD_RUN', 'false').lower() == 'true':
-        return GSGoogleCloudStorage()
+        return GoogleCloudStorage()
     return None 
 
 
