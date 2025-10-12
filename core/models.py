@@ -7,29 +7,26 @@ from decimal import Decimal
 from datetime import datetime, timedelta, time
 import uuid
 
+import os
+
 def get_media_storage():
     """Return appropriate storage backend for media files."""
     is_cloud_run = os.getenv('IS_CLOUD_RUN', 'false').lower() == 'true'
     is_building = os.getenv('IS_BUILDING', 'false').lower() == 'true'
 
+    # Only use GCS when we're on Cloud Run and not during build
     if is_cloud_run and not is_building:
         try:
+            # ✅ Import *inside* function so it’s available only when needed
             from storages.backends.gcloud import GoogleCloudStorage
-            print("✅ Using GoogleCloudStorage for media files")
+            print("✅ Using GoogleCloudStorage for media storage")
             return GoogleCloudStorage()
         except Exception as e:
             print(f"⚠️ Could not import GoogleCloudStorage: {e}")
             return None
     else:
+        print(f"🪶 Using default file storage (CloudRun={is_cloud_run}, Building={is_building})")
         return None
-
-
-
-def get_media_storage():
-    """Returns the appropriate storage backend for media files"""
-    if os.getenv('IS_CLOUD_RUN', 'false').lower() == 'true':
-        return GoogleCloudStorage()
-    return None 
 
 
 class UserManager(BaseUserManager):
