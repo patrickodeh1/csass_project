@@ -7,27 +7,6 @@ from decimal import Decimal
 from datetime import datetime, timedelta, time
 import uuid
 
-import os
-
-def get_media_storage():
-    """Return appropriate storage backend for media files."""
-    is_cloud_run = os.getenv('IS_CLOUD_RUN', 'false').lower() == 'true'
-    is_building = os.getenv('IS_BUILDING', 'false').lower() == 'true'
-
-    # Only use GCS when we're on Cloud Run and not during build
-    if is_cloud_run and not is_building:
-        try:
-            # ✅ Import *inside* function so it’s available only when needed
-            from storages.backends.gcloud import GoogleCloudStorage
-            print("✅ Using GoogleCloudStorage for media storage")
-            return GoogleCloudStorage()
-        except Exception as e:
-            print(f"⚠️ Could not import GoogleCloudStorage: {e}")
-            return None
-    else:
-        print(f"🪶 Using default file storage (CloudRun={is_cloud_run}, Building={is_building})")
-        return None
-
 
 class UserManager(BaseUserManager):
     """Custom user manager for email-based authentication"""
@@ -233,7 +212,6 @@ class Booking(models.Model):
         upload_to='booking_audio/',
         null=True,
         blank=True,
-        storage=get_media_storage(),
     )
     cancellation_reason = models.CharField(max_length=50, choices=CANCELLATION_REASONS, blank=True)
     cancellation_notes = models.TextField(blank=True)

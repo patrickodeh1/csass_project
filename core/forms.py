@@ -511,21 +511,9 @@ class BookingForm(forms.ModelForm):
         # Force duration to 15 minutes at save-time
         booking.duration_minutes = 15
 
-        # Handle audio file BEFORE the first save
         audio = self.files.get('audio_file') if self.files else None
         if audio and (self.request and (self.request.user.is_staff or self.request.user.is_superuser)):
-            import logging
-            from django.conf import settings
-            logger = logging.getLogger(__name__)
-            logger.error(f"=== AUDIO UPLOAD DEBUG ===")
-            logger.error(f"File name: {audio.name}")
-            logger.error(f"File size: {audio.size}")
-            logger.error(f"IS_CLOUD_RUN: {getattr(settings, 'IS_CLOUD_RUN', 'NOT SET')}")
-            logger.error(f"GS_BUCKET_NAME: {getattr(settings, 'GS_BUCKET_NAME', 'NOT SET')}")
-            logger.error(f"DEFAULT_FILE_STORAGE: {settings.DEFAULT_FILE_STORAGE}")
-            logger.error(f"Storage class: {booking._meta.get_field('audio_file').storage.__class__.__name__}")
             booking.audio_file = audio
-            logger.error(f"File assigned successfully")
 
         if not booking.pk:
             booking.created_by = self.request.user if self.request else booking.salesman

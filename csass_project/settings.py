@@ -1,76 +1,15 @@
 import os
 from pathlib import Path
-from decouple import config, UndefinedValueError
+from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Detect if running on Cloud Run
-IS_CLOUD_RUN = os.getenv('IS_CLOUD_RUN', 'false').lower() == 'true'
+# SECURITY
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-temp-key')
+DEBUG = config('DEBUG', default=True, cast=bool)
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
 
-# Detect if we're in Docker build (collectstatic phase)
-IS_BUILDING = os.getenv('SECRET_KEY') == 'temp-build-key'
-
-# SECRET_KEY - use environment variable in production
-if IS_CLOUD_RUN:
-    SECRET_KEY = os.getenv('SECRET_KEY')
-elif IS_BUILDING:
-    SECRET_KEY = 'temp-build-key'
-else:
-    SECRET_KEY = config('SECRET_KEY')
-
-# DEBUG - always False in production
-if IS_CLOUD_RUN or IS_BUILDING:
-    DEBUG = False
-else:
-    DEBUG = config('DEBUG', default=False, cast=bool)
-
-# ALLOWED_HOSTS
-if IS_CLOUD_RUN:
-    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
-else:
-    ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
-
-# Media Files Configuration  
-if IS_BUILDING:
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
-    STORAGES = {
-        "default": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
-elif IS_CLOUD_RUN:
-    # Use Google Cloud Storage for media files in production
-    STORAGES = {
-        "default": {
-            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
-    GS_BUCKET_NAME = 'csass-media-474705'
-    GS_PROJECT_ID = 'csass-474705'
-    GS_DEFAULT_ACL = 'publicRead'
-    GS_FILE_OVERWRITE = False
-    GS_QUERYSTRING_AUTH = False
-    MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
-else:
-    # Local development
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
-    STORAGES = {
-        "default": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-        },
-    }
-
+# INSTALLED APPS
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -80,13 +19,13 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'crispy_forms',
     'crispy_bootstrap5',
-    'storages',  # For Google Cloud Storage
     'core',
 ]
 
+# MIDDLEWARE
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # For static files
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -97,6 +36,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'csass_project.urls'
 
+# TEMPLATES
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -115,42 +55,18 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'csass_project.wsgi.application'
 
-# Database Configuration
-if IS_BUILDING:
-    # During Docker build, use a dummy database (won't be accessed)
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': ':memory:',
-        }
+# === DATABASE (SQLite for Local Development) ===
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
-elif IS_CLOUD_RUN:
-    # Production - Cloud SQL
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'HOST': f'/cloudsql/{os.getenv("CLOUD_SQL_CONNECTION_NAME")}',
-            'USER': os.getenv('DB_USER'),
-            'PASSWORD': os.getenv('DB_PASSWORD'),
-            'NAME': os.getenv('DB_NAME'),
-        }
-    }
-else:
-    # Local Development
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('DATABASE_NAME', default='postgres'),
-            'USER': config('DATABASE_USER', default='csassadmin'),
-            'PASSWORD': config('DATABASE_PASSWORD'),
-            'HOST': config('DATABASE_HOST', default='localhost'),
-            'PORT': config('DATABASE_PORT', default='5432'),
-        }
-    }
+}
 
-# CUSTOM USER MODEL - CRITICAL SETTING
+# CUSTOM USER MODEL
 AUTH_USER_MODEL = 'core.User'
 
+# PASSWORD VALIDATION
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 8}},
@@ -158,85 +74,49 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+# INTERNATIONALIZATION
 LANGUAGE_CODE = 'en-us'
-if IS_BUILDING:
-    TIME_ZONE = 'America/New_York'
-elif IS_CLOUD_RUN:
-    TIME_ZONE = os.getenv('TIMEZONE', 'America/New_York')
-else:
-    TIME_ZONE = config('TIMEZONE', default='America/New_York')
+TIME_ZONE = config('TIMEZONE', default='America/New_York')
 USE_I18N = True
 USE_TZ = True
 
-# Static Files Configuration
+# STATIC FILES
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-# Always include static folder if it exists (needed for collectstatic)
 if (BASE_DIR / 'static').exists():
     STATICFILES_DIRS = [BASE_DIR / 'static']
 
-# WhiteNoise configuration for serving static files
-#STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# MEDIA FILES
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
+# DEFAULT FILE STORAGE (Local)
+DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
 
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# Authentication
+# AUTH / LOGIN
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'calendar'
 LOGOUT_REDIRECT_URL = 'login'
 
-# Email Configuration
+# EMAIL SETTINGS
 EMAIL_BACKEND = "sendgrid_backend.SendgridBackend"
-if IS_BUILDING:
-    SENDGRID_API_KEY = 'temp-build-key'
-    DEFAULT_FROM_EMAIL = 'temp@example.com'
-elif IS_CLOUD_RUN:
-    SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-    DEFAULT_FROM_EMAIL = os.getenv("FROM_EMAIL")
-else:
-    SENDGRID_API_KEY = config("SENDGRID_API_KEY")
-    DEFAULT_FROM_EMAIL = config("FROM_EMAIL")
+SENDGRID_API_KEY = config("SENDGRID_API_KEY")
+DEFAULT_FROM_EMAIL = config("FROM_EMAIL")
 
-# Password Reset Settings
-PASSWORD_RESET_TIMEOUT = 86400  # 24 hours in seconds
+# PASSWORD RESET
+PASSWORD_RESET_TIMEOUT = 86400  # 24 hours
 
-# Crispy Forms
+# CRISPY FORMS
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 
-# Session Settings
+# SESSION SETTINGS
 SESSION_COOKIE_AGE = 28800  # 8 hours
 SESSION_SAVE_EVERY_REQUEST = True
 
-# Custom Settings
+# CUSTOM SETTINGS
 MAX_LOGIN_ATTEMPTS = 5
 EMAIL_TIMEOUT = 5
 
-# Security Settings for Production
-if IS_CLOUD_RUN:
-    # Cloud Run terminates SSL at the load balancer
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_BROWSER_XSS_FILTER = True
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    X_FRAME_OPTIONS = 'DENY'
-else:
-    # Disable password validators and enable sandbox mode for development
-    if not IS_BUILDING:
-        AUTH_PASSWORD_VALIDATORS = []
-        SENDGRID_SANDBOX_MODE_IN_DEBUG = False
-
-
-# === Google Cloud Storage Settings ===
-if os.getenv("IS_CLOUD_RUN", "false").lower() == "true":
-    DEFAULT_FILE_STORAGE = "storages.backends.gcloud.GoogleCloudStorage"
-    GS_BUCKET_NAME = os.getenv("GS_BUCKET_NAME", "csass-media-474705")
-    GS_DEFAULT_ACL = "publicRead"
-    GS_PROJECT_ID = os.getenv("GS_PROJECT_ID", "csass-474705")
-else:
-    # Local fallback storage
-    DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
+# DEFAULT AUTO FIELD
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
