@@ -2,8 +2,10 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.conf import settings
+from django.utils import timezone
 from datetime import datetime, timedelta, time
-from .models import SystemConfig, Booking, PayrollPeriod
+from .models import SystemConfig, Booking, PayrollPeriod, AvailableTimeSlot, AvailabilityCycle, User
+
 
 def get_current_payroll_period():
     """Get current payroll period (Friday to Thursday)"""
@@ -203,3 +205,77 @@ def send_booking_approved_notification(booking):
             html_message=html_message,
             fail_silently=False,
         )
+
+
+def generate_timeslots_for_cycle():
+    """
+    Generate timeslots automatically for each active salesman within the active 2-week cycle.
+    - Only Monday to Friday
+    - From 9:00 AM to 7:00 PM (30-minute intervals)
+    - For both appointment types: zoom and in_person
+    """
+    cycle = AvailabilityCycle.get_current_cycle()
+
+    start_date, end_date = cycle.start_date, cycle.end_date
+    salesmen = User.objects.filter(is_active_salesman=True, is_active=True)
+
+    for salesman in salesmen:
+        current_date = start_date
+        while current_date <= end_date:
+            # Weekday check: 0=Mon ... 6=Sun -> only Mon-Fri
+            if current_date.weekday() < 5:
+                start = time(9, 0)
+                end = time(19, 0)
+                current_dt = datetime.combine(current_date, start)
+
+                while current_dt.time() < end:
+                    for appt_type in ['zoom', 'in_person']:
+                        # unique_together ensures we won't duplicate existing slots
+                        AvailableTimeSlot.objects.get_or_create(
+                            salesman=salesman,
+                            date=current_date,
+                            start_time=current_dt.time(),
+                            appointment_type=appt_type,
+                            defaults={'cycle': cycle, 'created_by': salesman}
+                        )
+                    current_dt += timedelta(minutes=30)
+            # Next day
+            current_date += timedelta(days=1)
+
+    return cycle
+
+
+def ensure_timeslots_for_payroll_period(start_date, end_date, created_by=None):
+    """
+    Ensure timeslots exist for each active salesman within the given payroll period.
+    Mon–Fri, 9:00–19:00, 30min intervals, both zoom and in_person.
+    Idempotent via get_or_create.
+    """
+    salesmen = User.objects.filter(is_active_salesman=True, is_active=True)
+    for salesman in salesmen:
+        current_date = start_date
+        while current_date <= end_date:
+            if current_date.weekday() < 5:  # Mon-Fri
+                start = time(9, 0)
+                end = time(19, 0)
+                current_dt = datetime.combine(current_date, start)
+                while current_dt.time() < end:
+                    for appt_type in ['zoom', 'in_person']:
+                        AvailableTimeSlot.objects.get_or_create(
+                            salesman=salesman,
+                            date=current_date,
+                            start_time=current_dt.time(),
+                            appointment_type=appt_type,
+                            defaults={'created_by': (created_by or salesman)}
+                        )
+                    current_dt += timedelta(minutes=30)
+            current_date += timedelta(days=1)
+
+
+def cleanup_old_slots(weeks=2):
+    """Delete unused slots older than N weeks."""
+    cutoff = timezone.now().date() - timedelta(weeks=weeks)
+    old_slots = AvailableTimeSlot.objects.filter(is_booked=False, date__lt=cutoff)
+    count = old_slots.count()
+    old_slots.delete()
+    return count

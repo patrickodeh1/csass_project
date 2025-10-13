@@ -1,57 +1,78 @@
 {% extends 'base.html' %}
-
 {% block title %}Available Time Slots - CSASS{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <div class="row mb-4">
+    <!-- Header -->
+    <div class="row mb-4 align-items-center">
         <div class="col">
-            <h2><i class="bi bi-clock"></i> Available Time Slots</h2>
-            {% if not is_admin %}
-            <p class="text-muted">Manage your available appointment times</p>
-            {% endif %}
+            <h2><i class="bi bi-clock"></i> Availability Time Slots</h2>
+            <p class="text-muted mb-0">View and manage your 2-week availability cycle</p>
         </div>
         <div class="col-auto">
             <a href="{% url 'timeslot_create' %}" class="btn btn-primary">
-                <i class="bi bi-plus-circle"></i> Add Time Slot
+                <i class="bi bi-plus-circle"></i> Add Manual Slot
             </a>
         </div>
     </div>
 
-    {% if is_admin %}
-    <!-- Admin Filter -->
-    <div class="card mb-4">
-        <div class="card-body">
-            <form method="get" class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Filter by Salesman</label>
-                    <select name="salesman" class="form-select" onchange="this.form.submit()">
-                        <option value="">All Salesmen</option>
-                        {% for salesman in salesmen %}
-                        <option value="{{ salesman.id }}" {% if selected_salesman == salesman.id|stringformat:"s" %}selected{% endif %}>
-                            {{ salesman.get_full_name }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </form>
+    <!-- Filters -->
+    <form method="get" class="card mb-4 p-3 shadow-sm border-0">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Select 2-Week Cycle</label>
+                <select name="cycle" class="form-select" onchange="this.form.submit()">
+                    {% for c in cycles %}
+                    <option value="{{ c.id }}" {% if selected_cycle and selected_cycle.id == c.id %}selected{% endif %}>
+                        {{ c.start_date|date:"M d" }} - {{ c.end_date|date:"M d, Y" }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Filter by Day</label>
+                <input type="date" name="day" value="{{ selected_day }}" class="form-control" onchange="this.form.submit()">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Appointment Type</label>
+                <select name="type" class="form-select" onchange="this.form.submit()">
+                    <option value="">All</option>
+                    <option value="zoom" {% if selected_type == 'zoom' %}selected{% endif %}>Zoom</option>
+                    <option value="in_person" {% if selected_type == 'in_person' %}selected{% endif %}>In-Person</option>
+                </select>
+            </div>
         </div>
+    </form>
+
+    {% if is_admin %}
+    <div class="mb-3 d-flex gap-2">
+        <form method="post" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" name="cleanup_slots" class="btn btn-outline-danger">
+                <i class="bi bi-trash2"></i> Cleanup Old Slots
+            </button>
+        </form>
     </div>
     {% endif %}
 
     <!-- Time Slots Table -->
-    <div class="card shadow">
-        <div class="card-header bg-dark text-white">
+    <div class="card shadow border-0">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Time Slots</h5>
+            {% if selected_day %}
+            <small class="text-light">{{ selected_day|date:"D, M d, Y" }}</small>
+            {% else %}
+            <small class="text-light">Cycle: {{ selected_cycle.start_date|date:"M d" }} - {{ selected_cycle.end_date|date:"M d, Y" }}</small>
+            {% endif %}
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover mb-0">
+                <table class="table table-hover mb-0 align-middle">
                     <thead class="table-light">
                         <tr>
                             {% if is_admin %}<th>Salesman</th>{% endif %}
                             <th>Date</th>
-                            <th>Time Range</th>
+                            <th>Time</th>
                             <th>Type</th>
                             <th>Status</th>
                             <th>Created By</th>
@@ -64,15 +85,15 @@
                             {% if is_admin %}
                             <td><strong>{{ slot.salesman.get_full_name }}</strong></td>
                             {% endif %}
-                            <td>
-                                <span class="badge bg-secondary">{{ slot.date|date:"D, M d" }}</span>
-                            </td>
-                            <td>
-                                {{ slot.start_time|time:"g:i A" }} <!--- {{ slot.end_time|time:"g:i A" }}-->
-                            </td>
+                            <td><span class="badge bg-secondary">{{ slot.date|date:"D, M d" }}</span></td>
+                            <td>{{ slot.start_time|time:"g:i A" }}</td>
                             <td>
                                 <span class="badge bg-{% if slot.appointment_type == 'zoom' %}info{% else %}primary{% endif %}">
-                                    {% if slot.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
+                                    {% if slot.appointment_type == 'zoom' %}
+                                        <i class="bi bi-camera-video"></i> Zoom
+                                    {% else %}
+                                        <i class="bi bi-geo-alt"></i> In-Person
+                                    {% endif %}
                                 </span>
                             </td>
                             <td>
@@ -82,9 +103,7 @@
                                 <span class="badge bg-danger">Inactive</span>
                                 {% endif %}
                             </td>
-                            <td>
-                                <small class="text-muted">{{ slot.created_by.get_full_name }}</small>
-                            </td>
+                            <td><small class="text-muted">{{ slot.created_by.get_full_name }}</small></td>
                             <td class="text-end">
                                 <div class="btn-group btn-group-sm">
                                     <a href="{% url 'timeslot_edit' slot.id %}" class="btn btn-outline-primary">
@@ -100,10 +119,7 @@
                         <tr>
                             <td colspan="{% if is_admin %}7{% else %}6{% endif %}" class="text-center text-muted py-4">
                                 <i class="bi bi-clock-history" style="font-size: 2rem;"></i>
-                                <p class="mt-2">No time slots configured</p>
-                                <a href="{% url 'timeslot_create' %}" class="btn btn-primary btn-sm">
-                                    <i class="bi bi-plus-circle"></i> Add Your First Time Slot
-                                </a>
+                                <p class="mt-2">No time slots available for this day</p>
                             </td>
                         </tr>
                         {% endfor %}
@@ -112,20 +128,5 @@
             </div>
         </div>
     </div>
-
-    {% if not is_admin %}
-    <!-- Help Card for Salesmen -->
-    <div class="card mt-4">
-        <div class="card-body">
-            <h5><i class="bi bi-info-circle"></i> How to Manage Your Availability</h5>
-            <ul class="mb-0">
-                <li>Create time slots for each day and appointment type (Zoom/In-Person)</li>
-                <li>Remote agents can only book during your active time slots</li>
-                <li>You can deactivate slots temporarily without deleting them</li>
-                <li>Avoid overlapping time slots for the same appointment type</li>
-            </ul>
-        </div>
-    </div>
-    {% endif %}
 </div>
 {% endblock %}

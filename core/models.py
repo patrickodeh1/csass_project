@@ -479,42 +479,71 @@ class AuditLog(models.Model):
         return f"{user_str} - {self.action} {self.entity_type} ({self.timestamp})"
 
 
+class AvailabilityCycle(models.Model):
+    """Represents a 2-week availability period for all salesmen."""
+    start_date = models.DateField()
+    end_date = models.DateField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-start_date']
+        indexes = [
+            models.Index(fields=['start_date', 'end_date', 'is_active'])
+        ]
+
+    def __str__(self):
+        return f"{self.start_date.strftime('%b %d')} - {self.end_date.strftime('%b %d, %Y')}"
+
+    @classmethod
+    def get_current_cycle(cls):
+        """Return active cycle or create one covering the next 14 days, auto-generating slots."""
+        today = timezone.now().date()
+        active = cls.objects.filter(start_date__lte=today, end_date__gte=today, is_active=True).first()
+        if not active:
+            start_date = today
+            end_date = today + timedelta(days=13)
+            active = cls.objects.create(start_date=start_date, end_date=end_date)
+            # Auto-generate default weekday timeslots for this new cycle
+            try:
+                from .utils import generate_timeslots_for_cycle
+                generate_timeslots_for_cycle()
+            except Exception:
+                pass
+        else:
+            # If an active cycle exists but has no slots, generate them now
+            if not active.slots.exists():
+                try:
+                    from .utils import generate_timeslots_for_cycle
+                    generate_timeslots_for_cycle()
+                except Exception:
+                    pass
+        return active
+
+
 class AvailableTimeSlot(models.Model):
-    """Admin-defined time slots for bookings"""
+    """Admin-defined or auto-generated time slots for bookings."""
     APPOINTMENT_TYPE_CHOICES = [
         ('zoom', 'Zoom'),
         ('in_person', 'In-Person'),
     ]
-    
+
+    cycle = models.ForeignKey(AvailabilityCycle, on_delete=models.CASCADE, related_name='slots', null=True, blank=True)
     salesman = models.ForeignKey(User, on_delete=models.CASCADE, related_name='available_timeslots')
-    date = models.DateField(null=True)
+    date = models.DateField()
     start_time = models.TimeField()
-    appointment_type = models.CharField(
-        max_length=20, 
-        choices=APPOINTMENT_TYPE_CHOICES,
-        help_text="Type of appointments allowed in this slot"
-    )
+    appointment_type = models.CharField(max_length=20, choices=APPOINTMENT_TYPE_CHOICES)
     is_active = models.BooleanField(default=True)
+    is_booked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='timeslots_created')
-    
+
     class Meta:
         ordering = ['salesman', 'date', 'start_time']
+        unique_together = ('salesman', 'date', 'start_time', 'appointment_type')
         indexes = [
             models.Index(fields=['salesman', 'date', 'appointment_type', 'is_active']),
         ]
-    
+
     def __str__(self):
         return f"{self.salesman.get_full_name()} - {self.date.strftime('%b %d, %Y')} {self.start_time} ({self.get_appointment_type_display()})"
-    
-    def is_time_in_slot(self, time_obj):
-        """Check if a given time falls within this slot"""
-        # Since slots are 15 minutes long, check if the time matches the start time
-        # or falls within the 15-minute window
-        from datetime import timedelta
-        
-        # Calculate end time (15 minutes after start)
-        end_time = (datetime.combine(self.date.min, self.start_time) + timedelta(minutes=15)).time()
-        
-        # Check if the given time is within the slot range
-        return self.start_time <= time_obj < end_time

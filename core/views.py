@@ -14,7 +14,7 @@ from django.contrib.auth.views import (
 import csv
 from django.urls import reverse_lazy
 from .models import (Booking, Client, PayrollPeriod, PayrollAdjustment, 
-                     SystemConfig, AvailableTimeSlot, AuditLog, User)
+                     SystemConfig, AvailableTimeSlot, AvailabilityCycle, AuditLog, User)
 from .forms import (LoginForm, BookingForm, CancelBookingForm, AudioForm,
                     PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
 from .decorators import group_required, admin_required, remote_agent_required
@@ -26,6 +26,9 @@ from .utils import (
     check_booking_conflicts,
     send_booking_approved_notification,
     send_booking_declined_notification,
+    generate_timeslots_for_cycle,
+    cleanup_old_slots,
+    ensure_timeslots_for_payroll_period,
 )
 from django.utils.crypto import get_random_string
 from calendar import monthcalendar
@@ -1663,36 +1666,47 @@ def audit_log_view(request):
 
 # ============================================================
 @login_required
-@group_required('salesman', 'admin')
 def timeslots_view(request):
-    """View available time slots - Admin sees all, Salesman sees only their own"""
+    """Main availability dashboard view using 2-week cycles with automatic generation."""
     is_admin = request.user.is_staff
-    
-    # Admin can filter by salesman, salesmen only see their own
-    if is_admin:
-        salesman_filter = request.GET.get('salesman')
-        if salesman_filter:
-            timeslots = AvailableTimeSlot.objects.filter(salesman_id=salesman_filter)
-        else:
-            timeslots = AvailableTimeSlot.objects.all()
-    else:
-        # Salesman only sees their own slots
-        timeslots = AvailableTimeSlot.objects.filter(salesman=request.user)
-    
-    timeslots = timeslots.select_related('salesman', 'created_by').order_by('salesman', 'date', 'start_time')
-    
-    # Get salesmen list (for admin filter dropdown)
-    salesmen = None
-    if is_admin:
-        salesmen = User.objects.filter(is_active_salesman=True, is_active=True)
-    
+
+    # Ensure there's an active cycle; new cycle creation auto-generates slots via models.AvailabilityCycle.get_current_cycle
+    selected_cycle_id = request.GET.get('cycle')
+    cycles = AvailabilityCycle.objects.all().order_by('-start_date')
+    cycle = AvailabilityCycle.objects.filter(id=selected_cycle_id).first() or AvailabilityCycle.get_current_cycle()
+
+    # Filters
+    selected_day = request.GET.get('day')
+    appointment_type = request.GET.get('type')
+
+    # Base queryset: slots for the selected cycle
+    slots = AvailableTimeSlot.objects.filter(cycle=cycle)
+
+    if selected_day:
+        slots = slots.filter(date=selected_day)
+    if appointment_type:
+        slots = slots.filter(appointment_type=appointment_type)
+
+    if not is_admin:
+        slots = slots.filter(salesman=request.user)
+
+    slots = slots.select_related('salesman', 'created_by').order_by('salesman', 'date', 'start_time')
+
+    # Handle cleanup (admin only)
+    if request.method == 'POST' and is_admin:
+        if 'cleanup_slots' in request.POST:
+            count = cleanup_old_slots()
+            messages.info(request, f'Deleted {count} old unbooked slots.')
+            return redirect('timeslots')
+
     context = {
-        'timeslots': timeslots,
-        'salesmen': salesmen,
-        'selected_salesman': request.GET.get('salesman') if is_admin else None,
+        'timeslots': slots,
+        'cycles': cycles,
+        'selected_cycle': cycle,
+        'selected_day': selected_day,
+        'selected_type': appointment_type,
         'is_admin': is_admin,
     }
-    
     return render(request, 'timeslots.html', context)
 
 
