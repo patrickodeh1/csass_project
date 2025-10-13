@@ -15,7 +15,7 @@ import csv
 from django.urls import reverse_lazy
 from .models import (Booking, Client, PayrollPeriod, PayrollAdjustment, 
                      SystemConfig, AvailableTimeSlot, AuditLog, User)
-from .forms import (LoginForm, BookingForm, CancelBookingForm,
+from .forms import (LoginForm, BookingForm, CancelBookingForm, AudioForm,
                     PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
 from .decorators import group_required, admin_required, remote_agent_required
 from .utils import (
@@ -699,14 +699,13 @@ def salesman_pending_bookings_view(request):
 
 # Salesman-specific booking approval (redirects back to salesman list)
 @login_required
-@group_required('salesman', 'admin')
+@group_required('salesman')
 def salesman_booking_approve(request, pk):
     booking = get_object_or_404(Booking, pk=pk)
 
-    is_admin = request.user.is_staff
     is_salesman = request.user.groups.filter(name='salesman').exists()
 
-    if not is_admin and not (is_salesman and booking.salesman == request.user):
+    if not (is_salesman and booking.salesman == request.user):
         messages.error(request, "You don't have permission to approve this booking.")
         return redirect('salesman_pending_bookings')
 
@@ -748,19 +747,18 @@ def salesman_booking_approve(request, pk):
 
         return redirect('salesman_pending_bookings')
 
-    return render(request, 'booking_approve.html', {'booking': booking})
+    return render(request, 'salesman_booking_approve.html', {'booking': booking})
 
 
 # Salesman-specific booking decline (redirects back to salesman list)
 @login_required
-@group_required('salesman', 'admin')
+@group_required('salesman')
 def salesman_booking_decline(request, pk):
     booking = get_object_or_404(Booking, pk=pk)
 
-    is_admin = request.user.is_staff
     is_salesman = request.user.groups.filter(name='salesman').exists()
 
-    if not is_admin and not (is_salesman and booking.salesman == request.user):
+    if not (is_salesman and booking.salesman == request.user):
         messages.error(request, "You don't have permission to decline this booking.")
         return redirect('salesman_pending_bookings')
 
@@ -807,65 +805,71 @@ def salesman_booking_decline(request, pk):
 
         return redirect('salesman_pending_bookings')
 
-    return render(request, 'booking_decline.html', {'booking': booking})
+    return render(request, 'salesman_booking_decline.html', {'booking': booking})
 
 @login_required
 def booking_approve(request, pk):
     """Approve a pending booking - Admin or assigned Salesman"""
     booking = get_object_or_404(Booking, pk=pk)
-    
+
     # Check permissions
     is_admin = request.user.is_staff
-    is_salesman = request.user.groups.filter(name='salesman').exists()
-    
-    # Only admin or the assigned salesman can approve
-    if not is_admin and not (is_salesman and booking.salesman == request.user):
+
+    if not is_admin:
         messages.error(request, "You don't have permission to approve this booking.")
         return redirect('pending_bookings')
-    
+
     if not booking.can_be_approved():
         messages.error(request, 'This booking cannot be approved.')
         return redirect('pending_bookings')
 
+    # Instantiate the form
     if request.method == 'POST':
-        booking.status = 'confirmed'
-        booking.approved_at = timezone.now()
-        booking.approved_by = request.user
-        booking.save()
+        form = AudioForm(request.POST, request.FILES, instance=booking, request=request)
+        if form.is_valid():
+            # Save audio_file update
+            form.save(commit=False)
 
-        # Send confirmation emails to client and salesman
-        try:
-            send_booking_confirmation(booking)
-        except Exception as e:
-            logger.warning(f"Failed to send booking confirmation: {str(e)}")
+            # Update booking status
+            booking.status = 'confirmed'
+            booking.approved_at = timezone.now()
+            booking.approved_by = request.user
+            booking.save()
 
-        # Send approval notification to remote agent who created it
-        try:
-            send_booking_approved_notification(booking)
-        except Exception as e:
-            logger.warning(f"Failed to send approval notification: {str(e)}")
+            # Send confirmation emails
+            try:
+                send_booking_confirmation(booking)
+            except Exception as e:
+                logger.warning(f"Failed to send booking confirmation: {str(e)}")
 
-        messages.success(
-            request,
-            f'✓ Booking approved for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
-            f'Confirmation emails sent to all parties.'
-        )
+            # Send approval notification
+            try:
+                send_booking_approved_notification(booking)
+            except Exception as e:
+                logger.warning(f"Failed to send approval notification: {str(e)}")
 
-        # Log the approval
-        from .signals import create_audit_log
-        create_audit_log(
-            user=request.user,
-            action='update',
-            entity_type='Booking',
-            entity_id=booking.id,
-            changes={'status': 'confirmed', 'approved_by': request.user.get_full_name()},
-            request=request
-        )
+            messages.success(
+                request,
+                f'✓ Booking approved for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
+                f'Confirmation emails sent to all parties.'
+            )
 
-        return redirect('pending_bookings')
+            # Log the approval
+            from .signals import create_audit_log
+            create_audit_log(
+                user=request.user,
+                action='update',
+                entity_type='Booking',
+                entity_id=booking.id,
+                changes={'status': 'confirmed', 'approved_by': request.user.get_full_name()},
+                request=request
+            )
 
-    return render(request, 'booking_approve.html', {'booking': booking})
+            return redirect('pending_bookings')
+    else:
+        form = AudioForm(instance=booking, request=request)
 
+    return render(request, 'booking_approve.html', {'booking': booking, 'form': form})
 
 @login_required
 def booking_cancel(request, pk):
@@ -914,10 +918,9 @@ def booking_decline(request, pk):
     
     # Check permissions
     is_admin = request.user.is_staff
-    is_salesman = request.user.groups.filter(name='salesman').exists()
     
     # Only admin or the assigned salesman can decline
-    if not is_admin and not (is_salesman and booking.salesman == request.user):
+    if not is_admin:
         messages.error(request, "You don't have permission to decline this booking.")
         return redirect('pending_bookings')
     

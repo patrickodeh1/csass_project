@@ -529,6 +529,10 @@ class BookingForm(forms.ModelForm):
             booking.save()
         
         return booking
+
+class AudioForm(BookingForm):
+    class Meta(BookingForm.Meta):
+        fields = ['audio_file']
     
 
 class CancelBookingForm(forms.Form):

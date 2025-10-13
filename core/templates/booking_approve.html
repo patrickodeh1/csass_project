@@ -61,16 +61,22 @@
                         <strong>Commission Amount:</strong><br>
                         <span class="text-success fs-4">${{ booking.commission_amount }}</span>
                     </div>
-
+                    
                     {% if booking.notes %}
                     <div class="mb-3">
                         <strong>Notes:</strong><br>
                         <p class="border p-2 rounded">{{ booking.notes }}</p>
                     </div>
                     {% endif %}
-
-                    <form method="post" class="mt-4">
+                    <form method="post" enctype="multipart/form-data" class="mt-4">
                         {% csrf_token %}
+                        {% if request.user.is_staff %}
+                            <div class="col-12">
+                                <label for="{{ form.audio_file.id_for_label }}" class="form-label fw-bold">Audio (Admin only)</label>
+                                {{ form.audio_file }}
+                                <div class="text-danger small mt-1">{{ form.audio_file.errors }}</div>
+                            </div>
+                        {% endif %}
                         <div class="d-flex gap-2 justify-content-end">
                             <a href="{% url 'pending_bookings' %}" class="btn btn-secondary">
                                 <i class="bi bi-arrow-left"></i> Back
