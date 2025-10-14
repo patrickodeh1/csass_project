@@ -29,6 +29,8 @@ from .utils import (
     generate_timeslots_for_cycle,
     cleanup_old_slots,
     ensure_timeslots_for_payroll_period,
+    mark_past_slots_inactive,
+    mark_elapsed_today_slots_inactive,
 )
 from django.utils.crypto import get_random_string
 from calendar import monthcalendar
@@ -183,6 +185,12 @@ def password_change_view(request):
 def calendar_view(request):
     """Calendar view with role-based booking visibility and correct weekday alignment"""
     from datetime import date as date_class
+    # Auto-inactivate past and elapsed slots for display and safety
+    try:
+        mark_past_slots_inactive()
+        mark_elapsed_today_slots_inactive()
+    except Exception:
+        pass
     
     # Get filter parameters
     salesman_id = request.GET.get('salesman')
@@ -300,6 +308,12 @@ def calendar_view(request):
         appointment_date__lte=end_date
     ).select_related('client', 'salesman', 'created_by', 'approved_by', 'declined_by', 'canceled_by', 'updated_by')
     
+    # Exclude past confirmed/completed/no_show appointments from the calendar view
+    today_date = timezone.now().date()
+    bookings = bookings.exclude(
+        Q(appointment_date__lt=today_date) & Q(status__in=['confirmed', 'completed', 'no_show'])
+    )
+    
     if is_salesman and not is_admin:
         # Salesmen see only their own bookings
         bookings = bookings.filter(salesman=request.user)
@@ -319,15 +333,22 @@ def calendar_view(request):
         date__gte=start_date,
         date__lte=end_date
     ).select_related('salesman')
+    inactive_timeslots = AvailableTimeSlot.objects.filter(
+        is_active=False,
+        date__gte=start_date,
+        date__lte=end_date
+    ).select_related('salesman')
     
     if is_salesman and not is_admin:
         # Salesmen do not see available time slots
         timeslots = timeslots.none()
     elif salesman_id and is_admin:
         timeslots = timeslots.filter(salesman_id=salesman_id)
+        inactive_timeslots = inactive_timeslots.filter(salesman_id=salesman_id)
     
     if appointment_type:
         timeslots = timeslots.filter(appointment_type=appointment_type)
+        inactive_timeslots = inactive_timeslots.filter(appointment_type=appointment_type)
     
     # Organize available slots by date
     class SlotData:
@@ -345,6 +366,13 @@ def calendar_view(request):
             available_slots_dict[date_key] = []
         slot_obj = SlotData(slot.date, slot.start_time, slot.salesman, slot.appointment_type)
         available_slots_dict[date_key].append(slot_obj)
+    inactive_slots_dict = {}
+    for slot in inactive_timeslots:
+        date_key = slot.date
+        if date_key not in inactive_slots_dict:
+            inactive_slots_dict[date_key] = []
+        slot_obj = SlotData(slot.date, slot.start_time, slot.salesman, slot.appointment_type)
+        inactive_slots_dict[date_key].append(slot_obj)
     
     # Organize bookings by status for admins/remote agents, or as appointments for salesmen
     pending_bookings_dict = {}
@@ -381,6 +409,7 @@ def calendar_view(request):
                 if day_info['is_current_month']:
                     day_date = day_info['date']
                     day_info['available_slots'] = available_slots_dict.get(day_date, [])
+                    day_info['inactive_slots'] = inactive_slots_dict.get(day_date, [])
                     if is_salesman and not is_admin:
                         day_info['appointments'] = appointments_dict.get(day_date, [])
                     else:
@@ -392,6 +421,7 @@ def calendar_view(request):
         for day_info in week_days:
             day_date = day_info['date']
             day_info['available_slots'] = available_slots_dict.get(day_date, [])
+            day_info['inactive_slots'] = inactive_slots_dict.get(day_date, [])
             if is_salesman and not is_admin:
                 day_info['appointments'] = appointments_dict.get(day_date, [])
             else:
@@ -401,6 +431,7 @@ def calendar_view(request):
     
     # Day view - prepare separate lists
     day_available_slots = None
+    day_inactive_slots = None
     day_pending_bookings = None
     day_confirmed_bookings = None
     day_declined_bookings = None
@@ -408,6 +439,7 @@ def calendar_view(request):
     
     if view_mode == 'day':
         day_available_slots = available_slots_dict.get(current_date, [])
+        day_inactive_slots = inactive_slots_dict.get(current_date, [])
         if is_salesman and not is_admin:
             day_appointments = appointments_dict.get(current_date, [])
         else:
@@ -444,6 +476,7 @@ def calendar_view(request):
         'day_confirmed_bookings': day_confirmed_bookings,
         'day_declined_bookings': day_declined_bookings,
         'day_appointments': day_appointments,
+        'day_inactive_slots': day_inactive_slots,
         'is_salesman': is_salesman and not is_admin,  # Flag for template
         'is_remote_agent': is_remote_agent and not is_admin,
     }
@@ -505,37 +538,39 @@ def booking_create(request):
         form = BookingForm(request.POST, request.FILES, initial=initial, request=request)
         if form.is_valid():
             
-            # 1. --- 🌟 NEW LOGIC: FIND THE AVAILABLE TIME SLOT 🌟 ---
+            # 1. Validate present/future and 30-minute alignment
+            appt_date = form.cleaned_data.get('appointment_date')
+            appt_time = form.cleaned_data.get('appointment_time')
+            now = timezone.localtime()
+            if appt_date < now.date() or (appt_date == now.date() and appt_time <= now.time()):
+                messages.error(request, 'Cannot book a slot in the past or elapsed today.')
+                return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
+            if appt_time and appt_time.minute not in (0, 30):
+                messages.error(request, 'Appointment time must align to the 30-minute slot boundary.')
+                return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
+
+            # 2. Find the ACTIVE AvailableTimeSlot
             available_slot = None
-            
-            # Use data from the form's cleaned_data (or initial data, which comes from GET)
-            # as these are the guaranteed, validated values.
-            
-            # Ensure all required parameters are present to query the slot
             if (form.cleaned_data.get('salesman') and 
                 form.cleaned_data.get('appointment_date') and 
                 form.cleaned_data.get('appointment_time') and 
                 form.cleaned_data.get('appointment_type')):
-                
                 try:
-                    # Look for the ACTIVE slot matching the booking's exact start time and type
                     available_slot = AvailableTimeSlot.objects.get(
                         salesman=form.cleaned_data['salesman'],
                         date=form.cleaned_data['appointment_date'],
                         start_time=form.cleaned_data['appointment_time'],
                         appointment_type=form.cleaned_data['appointment_type'],
-                        is_active=True # CRUCIAL: Must be an active slot
+                        is_active=True
                     )
                 except AvailableTimeSlot.DoesNotExist:
-                    # Fail the booking if the selected slot is no longer available/active
                     messages.error(request, "The selected time slot is no longer active or available.")
-                    # Return the form with the error message
                     return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
             
-            # 2. Save the Booking object (commit=False)
+            # 3. Save the Booking object (commit=False)
             booking = form.save(commit=False)
             
-            # 3. --- 🌟 LINK THE SLOT 🌟 ---
+            # 4. Link the slot
             if available_slot:
                 booking.available_slot = available_slot
             
@@ -976,6 +1011,84 @@ def booking_decline(request, pk):
     return render(request, 'booking_decline.html', {'booking': booking})
 
 
+
+@login_required
+def booking_mark_attended(request, pk):
+    """Mark a confirmed booking as attended (completed). Salesman (assigned) or admin only."""
+    booking = get_object_or_404(Booking, pk=pk)
+    is_admin = request.user.is_staff
+    is_salesman = request.user.groups.filter(name='salesman').exists()
+
+    if not (is_admin or (is_salesman and booking.salesman == request.user)):
+        return HttpResponseForbidden("You don't have permission to update attendance for this booking.")
+
+    if booking.status != 'confirmed':
+        messages.error(request, 'Only confirmed bookings can be marked as attended.')
+        return redirect('booking_detail', pk=pk)
+
+    if booking.appointment_date > timezone.now().date():
+        messages.error(request, 'You can only mark attendance on or after the appointment date.')
+        return redirect('booking_detail', pk=pk)
+
+    booking.status = 'completed'
+    booking.save()
+    messages.success(request, 'Booking marked as Attended (Completed).')
+    return redirect('calendar')
+
+@login_required
+def booking_mark_dna(request, pk):
+    """Mark a confirmed booking as Did Not Attend (no_show). Salesman (assigned) or admin only."""
+    booking = get_object_or_404(Booking, pk=pk)
+    is_admin = request.user.is_staff
+    is_salesman = request.user.groups.filter(name='salesman').exists()
+
+    if not (is_admin or (is_salesman and booking.salesman == request.user)):
+        return HttpResponseForbidden("You don't have permission to update attendance for this booking.")
+
+    if booking.status != 'confirmed':
+        messages.error(request, 'Only confirmed bookings can be marked as DNA.')
+        return redirect('booking_detail', pk=pk)
+
+    if booking.appointment_date > timezone.now().date():
+        messages.error(request, 'You can only mark attendance on or after the appointment date.')
+        return redirect('booking_detail', pk=pk)
+
+    booking.status = 'no_show'
+    booking.save()
+    messages.success(request, 'Booking marked as Did Not Attend (DNA).')
+    return redirect('calendar')
+
+@login_required
+@admin_required
+def past_appointments_view(request):
+    """Admin page to view past appointments and manage AD/DNA."""
+    today_date = timezone.now().date()
+    status_filter = request.GET.get('status')
+    salesman_id = request.GET.get('salesman')
+
+    qs = Booking.objects.filter(
+        appointment_date__lt=today_date,
+        status__in=['confirmed', 'completed', 'no_show']
+    ).select_related('client', 'salesman').order_by('-appointment_date', '-appointment_time')
+
+    if status_filter in ['confirmed', 'completed', 'no_show']:
+        qs = qs.filter(status=status_filter)
+    if salesman_id:
+        qs = qs.filter(salesman_id=salesman_id)
+
+    paginator = Paginator(qs, 25)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    salesmen = User.objects.filter(is_active_salesman=True, is_active=True).order_by('first_name', 'last_name')
+
+    context = {
+        'page_obj': page_obj,
+        'salesmen': salesmen,
+        'status_filter': status_filter,
+        'selected_salesman': salesman_id,
+    }
+    return render(request, 'past_appointments.html', context)
 
 @login_required
 def pending_bookings_count_api(request):
@@ -1670,8 +1783,16 @@ def timeslots_view(request):
     """Main availability dashboard view using 2-week cycles with automatic generation."""
     is_admin = request.user.is_staff
 
+    # Auto-inactivate past and elapsed slots
+    try:
+        mark_past_slots_inactive()
+        mark_elapsed_today_slots_inactive()
+    except Exception:
+        pass
+
     # Ensure there's an active cycle; new cycle creation auto-generates slots via models.AvailabilityCycle.get_current_cycle
     selected_cycle_id = request.GET.get('cycle')
+    selected_salesman_id = request.GET.get('salesman') if is_admin else None
     cycles = AvailabilityCycle.objects.all().order_by('-start_date')
     cycle = AvailabilityCycle.objects.filter(id=selected_cycle_id).first() or AvailabilityCycle.get_current_cycle()
 
@@ -1686,18 +1807,30 @@ def timeslots_view(request):
         slots = slots.filter(date=selected_day)
     if appointment_type:
         slots = slots.filter(appointment_type=appointment_type)
+    if selected_salesman_id:
+        slots = slots.filter(salesman_id=selected_salesman_id)
 
     if not is_admin:
         slots = slots.filter(salesman=request.user)
 
-    slots = slots.select_related('salesman', 'created_by').order_by('salesman', 'date', 'start_time')
+    # Order with active slots first, then by date/time so current day appears at the top; inactive sink to bottom
+    slots = slots.select_related('salesman', 'created_by').order_by('-is_active', 'date', 'start_time', 'salesman')
 
-    # Handle cleanup (admin only)
+    # Handle admin actions
     if request.method == 'POST' and is_admin:
         if 'cleanup_slots' in request.POST:
             count = cleanup_old_slots()
-            messages.info(request, f'Deleted {count} old unbooked slots.')
+            messages.info(request, f'Marked {count} old unbooked slots as inactive.')
             return redirect('timeslots')
+        elif 'delete_cycle' in request.POST:
+            if cycle:
+                cycle.delete()
+                messages.success(request, 'Current 2-week cycle deleted. A new cycle will be created automatically.')
+            return redirect('timeslots')
+
+    salesmen = None
+    if is_admin:
+        salesmen = User.objects.filter(is_active_salesman=True, is_active=True).order_by('first_name', 'last_name')
 
     context = {
         'timeslots': slots,
@@ -1705,6 +1838,8 @@ def timeslots_view(request):
         'selected_cycle': cycle,
         'selected_day': selected_day,
         'selected_type': appointment_type,
+        'selected_salesman': selected_salesman_id,
+        'salesmen': salesmen,
         'is_admin': is_admin,
     }
     return render(request, 'timeslots.html', context)

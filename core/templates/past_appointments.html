@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block title %}Past Appointments - CSASS{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row mb-4 align-items-center">
+    <div class="col">
+      <h2><i class="bi bi-clock-history"></i> Past Appointments</h2>
+      <p class="text-muted mb-0">View past confirmed meetings and mark attendance (AD/DNA)</p>
+    </div>
+  </div>
+
+  <form method="get" class="card mb-4 p-3 shadow-sm border-0">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Salesman</label>
+        <select name="salesman" class="form-select" onchange="this.form.submit()">
+          <option value="">All Salesmen</option>
+          {% for s in salesmen %}
+          <option value="{{ s.id }}" {% if selected_salesman == s.id|stringformat:'s' %}selected{% endif %}>{{ s.get_full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-select" onchange="this.form.submit()">
+          <option value="">All</option>
+          <option value="confirmed" {% if status_filter == 'confirmed' %}selected{% endif %}>Confirmed</option>
+          <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Attended (Completed)</option>
+          <option value="no_show" {% if status_filter == 'no_show' %}selected{% endif %}>Did Not Attend (DNA)</option>
+        </select>
+      </div>
+    </div>
+  </form>
+
+  <div class="card shadow border-0">
+    <div class="card-header bg-dark text-white">
+      <h5 class="mb-0">Past Appointments</h5>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Salesman</th>
+              <th>Client</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for booking in page_obj %}
+            <tr>
+              <td>{{ booking.appointment_date|date:"D, M d, Y" }}</td>
+              <td>{{ booking.appointment_time|time:"g:i A" }}</td>
+              <td>{{ booking.salesman.get_full_name }}</td>
+              <td>{{ booking.client.get_full_name|default:booking.client }}</td>
+              <td>
+                <span class="badge bg-{% if booking.appointment_type == 'zoom' %}info{% else %}primary{% endif %}">
+                  {% if booking.appointment_type == 'zoom' %}Zoom{% else %}In-Person{% endif %}
+                </span>
+              </td>
+              <td>
+                {% if booking.status == 'confirmed' %}
+                  <span class="badge bg-warning text-dark">Confirmed</span>
+                {% elif booking.status == 'completed' %}
+                  <span class="badge bg-success">Attended (Completed)</span>
+                {% elif booking.status == 'no_show' %}
+                  <span class="badge bg-danger">Did Not Attend (DNA)</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <div class="btn-group btn-group-sm">
+                  {% if booking.status == 'confirmed' %}
+                  <a href="{% url 'booking_mark_attended' booking.id %}" class="btn btn-outline-success" title="Mark Attended (AD)">
+                    AD
+                  </a>
+                  <a href="{% url 'booking_mark_dna' booking.id %}" class="btn btn-outline-danger" title="Mark Did Not Attend (DNA)">
+                    DNA
+                  </a>
+                  {% else %}
+                  <a href="{% url 'booking_detail' booking.id %}" class="btn btn-outline-primary">
+                    View
+                  </a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="7" class="text-center text-muted py-4">No past appointments found.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer">
+      <nav aria-label="Pagination">
+        <ul class="pagination mb-0">
+          {% if page_obj.has_previous %}
+          <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if selected_salesman %}&salesman={{ selected_salesman }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">Previous</a></li>
+          {% endif %}
+          <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+          {% if page_obj.has_next %}
+          <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if selected_salesman %}&salesman={{ selected_salesman }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">Next</a></li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+  </div>
+</div>
+{% endblock %}

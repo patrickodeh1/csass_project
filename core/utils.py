@@ -4,6 +4,7 @@ from django.utils.html import strip_tags
 from django.conf import settings
 from django.utils import timezone
 from datetime import datetime, timedelta, time
+import os
 from .models import SystemConfig, Booking, PayrollPeriod, AvailableTimeSlot, AvailabilityCycle, User
 
 
@@ -44,8 +45,42 @@ def get_payroll_periods(weeks=3):
     
     return periods
 
+def _get_twilio_client():
+    """Create a Twilio client from settings or env; return (client, from_number) or (None, default_from)."""
+    sid = getattr(settings, 'TWILIO_ACCOUNT_SID', os.getenv('TWILIO_ACCOUNT_SID', 'example'))
+    token = getattr(settings, 'TWILIO_AUTH_TOKEN', os.getenv('TWILIO_AUTH_TOKEN', 'example'))
+    from_number = getattr(settings, 'TWILIO_FROM_NUMBER', os.getenv('TWILIO_FROM_NUMBER', '+10000000000'))
+    if not sid or not token or sid == 'example' or token == 'example':
+        return None, from_number
+    try:
+        from twilio.rest import Client  # Lazy import
+        client = Client(sid, token)
+        return client, from_number
+    except Exception:
+        return None, from_number
+
+
+def send_sms(to_phone: str, body: str) -> bool:
+    """Send an SMS via Twilio. Returns True if queued, False otherwise. Safe no-op if credentials are placeholders."""
+    if not to_phone or not body:
+        return False
+    # Global SMS enable flag (optional)
+    sms_enabled = getattr(settings, 'SMS_ENABLED', True)
+    if not sms_enabled:
+        return False
+    client, from_number = _get_twilio_client()
+    if client is None:
+        # Credentials not configured; skip sending
+        return False
+    try:
+        client.messages.create(from_=from_number, to=to_phone, body=body)
+        return True
+    except Exception:
+        return False
+
+
 def send_booking_confirmation(booking, to_client=True, to_salesman=True):
-    """Send booking confirmation email"""
+    """Send booking confirmation email + SMS (if configured)."""
     config = SystemConfig.get_config()
     
     context = {
@@ -66,6 +101,12 @@ def send_booking_confirmation(booking, to_client=True, to_salesman=True):
             html_message=html_message,
             fail_silently=False,
         )
+        # SMS to client
+        try:
+            sms_body = f"Confirmed: {booking.appointment_date} at {booking.appointment_time.strftime('%I:%M %p')} with {booking.salesman.get_full_name()}"
+            send_sms(getattr(booking.client, 'phone_number', None), sms_body)
+        except Exception:
+            pass
     
     if to_salesman:
         subject = f"New Appointment: {booking.client.get_full_name()} on {booking.appointment_date}"
@@ -80,9 +121,15 @@ def send_booking_confirmation(booking, to_client=True, to_salesman=True):
             html_message=html_message,
             fail_silently=False,
         )
+        # SMS to salesman
+        try:
+            sms_body = f"New appt: {booking.client.get_full_name()} {booking.appointment_date} {booking.appointment_time.strftime('%I:%M %p')}"
+            send_sms(getattr(booking.salesman, 'phone_number', None), sms_body)
+        except Exception:
+            pass
 
 def send_booking_reminder(booking):
-    """Send appointment reminder"""
+    """Send appointment reminder (email + SMS)."""
     config = SystemConfig.get_config()
     
     context = {
@@ -92,7 +139,7 @@ def send_booking_reminder(booking):
     
     subject = f"Reminder: Appointment Tomorrow at {booking.appointment_time.strftime('%I:%M %p')}"
     
-    # Send to client
+    # Send to client and salesman via email
     html_message = render_to_string('emails/booking_reminder.html', context)
     plain_message = strip_tags(html_message)
     
@@ -104,6 +151,14 @@ def send_booking_reminder(booking):
         html_message=html_message,
         fail_silently=False,
     )
+    # SMS reminders
+    try:
+        client_sms = f"Reminder: {booking.appointment_date} {booking.appointment_time.strftime('%I:%M %p')} with {booking.salesman.get_full_name()}"
+        send_sms(getattr(booking.client, 'phone_number', None), client_sms)
+        sales_sms = f"Reminder: {booking.client.get_full_name()} {booking.appointment_date} {booking.appointment_time.strftime('%I:%M %p')}"
+        send_sms(getattr(booking.salesman, 'phone_number', None), sales_sms)
+    except Exception:
+        pass
 
 def send_booking_cancellation(booking):
     """Send cancellation notification"""
@@ -153,11 +208,24 @@ def check_booking_conflicts(salesman, appointment_date, appointment_time, durati
     return False, None
 
 
+# --- Drip campaign placeholders (to be wired into attendance marking) ---
+
+def schedule_attended_drip(booking):
+    """Placeholder: schedule AD drip for 21 days. To be implemented via a job/cron."""
+    # Implement creation of Notification queue entries here in future
+    return True
+
+
+def schedule_dna_drip(booking):
+    """Placeholder: schedule DNA drip for 90 days. To be implemented via a job/cron."""
+    return True
+
+
 def send_booking_declined_notification(booking):
     """
-    Send email notification when booking is declined by admin
+    Send notification when booking is declined by admin (email + SMS to agent)
     """
-    # Email to remote agent who created the booking
+    # Email/SMS to remote agent who created the booking
     if booking.created_by.groups.filter(name='remote_agent').exists():
         subject = f'Booking Declined - {booking.client.get_full_name()}'
         
@@ -178,12 +246,18 @@ def send_booking_declined_notification(booking):
             html_message=html_message,
             fail_silently=False,
         )
+        # SMS to agent
+        try:
+            sms_body = f"Declined: {booking.client.get_full_name()} {booking.appointment_date} {booking.appointment_time.strftime('%I:%M %p')}"
+            send_sms(getattr(booking.created_by, 'phone_number', None), sms_body)
+        except Exception:
+            pass
 
 
 def send_booking_approved_notification(booking):
     """
     Send email notification when booking is approved by admin
-    Notify the remote agent that their booking was approved
+    Notify the remote agent that their booking was approved (email + SMS)
     """
     if booking.created_by.groups.filter(name='remote_agent').exists():
         subject = f'Booking Approved - {booking.client.get_full_name()}'
@@ -205,6 +279,12 @@ def send_booking_approved_notification(booking):
             html_message=html_message,
             fail_silently=False,
         )
+        # SMS to agent
+        try:
+            sms_body = f"Approved: {booking.client.get_full_name()} on {booking.appointment_date} {booking.appointment_time.strftime('%I:%M %p')}"
+            send_sms(getattr(booking.created_by, 'phone_number', None), sms_body)
+        except Exception:
+            pass
 
 
 def generate_timeslots_for_cycle():
@@ -273,9 +353,26 @@ def ensure_timeslots_for_payroll_period(start_date, end_date, created_by=None):
 
 
 def cleanup_old_slots(weeks=2):
-    """Delete unused slots older than N weeks."""
+    """Mark unused slots older than N weeks as inactive (do not delete)."""
     cutoff = timezone.now().date() - timedelta(weeks=weeks)
-    old_slots = AvailableTimeSlot.objects.filter(is_booked=False, date__lt=cutoff)
+    old_slots = AvailableTimeSlot.objects.filter(is_booked=False, date__lt=cutoff, is_active=True)
     count = old_slots.count()
-    old_slots.delete()
+    old_slots.update(is_active=False)
     return count
+
+
+def mark_past_slots_inactive():
+    """Auto-inactivate yesterday and older unbooked slots (keep data)."""
+    today = timezone.now().date()
+    qs = AvailableTimeSlot.objects.filter(date__lt=today, is_active=True, is_booked=False)
+    updated = qs.update(is_active=False)
+    return updated
+
+
+def mark_elapsed_today_slots_inactive():
+    """Auto-inactivate today's unbooked slots that have already elapsed."""
+    now = timezone.localtime()
+    today = now.date()
+    qs = AvailableTimeSlot.objects.filter(date=today, start_time__lt=now.time(), is_active=True, is_booked=False)
+    updated = qs.update(is_active=False)
+    return updated

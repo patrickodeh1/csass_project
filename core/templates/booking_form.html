@@ -97,6 +97,11 @@
                 {{ form.zoom_link }}
                 <div class="text-danger small mt-1">{{ form.zoom_link.errors }}</div>
               </div>
+              <div class="col-12" id="address-field-wrapper" style="display: none;">
+                <label for="{{ form.meeting_address.id_for_label }}" class="form-label fw-bold">Meeting Address *</label>
+                {{ form.meeting_address }}
+                <div class="text-danger small mt-1">{{ form.meeting_address.errors }}</div>
+              </div>
               <div class="col-12">
                 <label for="{{ form.notes.id_for_label }}" class="form-label fw-bold">Notes</label>
                 {{ form.notes }}
@@ -130,9 +135,12 @@
 document.addEventListener("DOMContentLoaded", function() {
   const appointmentType = "{{ form.initial.appointment_type|escapejs }}";
   const zoomFieldWrapper = document.getElementById("zoom-field-wrapper");
+  const addressFieldWrapper = document.getElementById("address-field-wrapper");
 
   if (appointmentType === "zoom") {
     zoomFieldWrapper.style.display = "block";
+  } else if (appointmentType === "in_person") {
+    addressFieldWrapper.style.display = "block";
   }
 });
 </script>

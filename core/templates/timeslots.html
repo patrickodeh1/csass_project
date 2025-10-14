@@ -29,6 +29,19 @@
                     {% endfor %}
                 </select>
             </div>
+            {% if is_admin %}
+            <div class="col-md-4">
+                <label class="form-label">Salesman</label>
+                <select name="salesman" class="form-select" onchange="this.form.submit()">
+                    <option value="">All Salesmen</option>
+                    {% for s in salesmen %}
+                    <option value="{{ s.id }}" {% if selected_salesman == s.id|stringformat:"s" %}selected{% endif %}>
+                        {{ s.get_full_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div class="col-md-4">
                 <label class="form-label">Filter by Day</label>
                 <input type="date" name="day" value="{{ selected_day }}" class="form-control" onchange="this.form.submit()">

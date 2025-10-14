@@ -309,6 +309,7 @@ class BookingForm(forms.ModelForm):
     zoom_link = forms.URLField(required=False, widget=forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'Zoom meeting link (if applicable)', 'readonly': True}))
     
     audio_file = forms.FileField(required=False)
+    meeting_address = forms.CharField(required=False, label='Meeting Address')
 
     class Meta:
         model = Booking
@@ -382,9 +383,12 @@ class BookingForm(forms.ModelForm):
         appointment_type = cleaned_data.get('appointment_type')
         duration_minutes = 15  # Force 15 minutes
         zoom_link = cleaned_data.get('zoom_link')
+        meeting_address = cleaned_data.get('meeting_address')
 
         if appointment_type == 'zoom' and not zoom_link:
             self.add_error('zoom_link', 'A meeting link is required for Zoom appointments.')
+        if appointment_type == 'in_person' and not meeting_address:
+            self.add_error('meeting_address', 'A meeting address is required for in-person appointments.')
             
         
         if all([salesman, appointment_date, appointment_time, appointment_type]):
@@ -525,6 +529,19 @@ class BookingForm(forms.ModelForm):
         else:
             booking.updated_by = self.request.user if self.request else booking.salesman
         
+        # Persist meeting address into notes if in-person
+        try:
+            if self.cleaned_data.get('appointment_type') == 'in_person':
+                addr = (self.cleaned_data.get('meeting_address') or '').strip()
+                if addr:
+                    if booking.notes:
+                        if 'Meeting Address:' not in booking.notes:
+                            booking.notes = f"{booking.notes}\nMeeting Address: {addr}"
+                    else:
+                        booking.notes = f"Meeting Address: {addr}"
+        except Exception:
+            pass
+
         if commit:
             booking.save()
         
