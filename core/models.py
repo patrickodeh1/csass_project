@@ -547,6 +547,13 @@ class AvailableTimeSlot(models.Model):
         indexes = [
             models.Index(fields=['salesman', 'date', 'appointment_type', 'is_active']),
         ]
+    
+    def is_time_in_slot(self, check_time):
+        """
+        Check if a given time falls within this slot.
+        Since all slots are 30-minute intervals, we just check if the time matches the start_time.
+        """
+        return self.start_time == check_time
 
     def __str__(self):
         return f"{self.salesman.get_full_name()} - {self.date.strftime('%b %d, %Y')} {self.start_time} ({self.get_appointment_type_display()})"

@@ -330,20 +330,23 @@ class BookingForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         
         for field_name, field in self.fields.items():
-            # Add a check to avoid overwriting specific widget types like Checkbox
             if not isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs.update({'class': 'form-control'})
 
-        # Filter salesmen to only active salesmen
-        self.fields['salesman'].queryset = User.objects.filter(
-            is_active_salesman=True,
-            is_active=True
-        )
-        self.fields['salesman'].widget.attrs['class'] = 'form-control'
+        # only do this if 'salesman' exists
+        if 'salesman' in self.fields:
+            self.fields['salesman'].queryset = User.objects.filter(
+                is_active_salesman=True,
+                is_active=True
+            )
+
+            self.fields['salesman'].widget.attrs['class'] = 'form-control'
         
         # Always force duration to 15 minutes in the UI
-        self.fields['duration_minutes'].initial = 15
-        self.fields['duration_minutes'].disabled = True
+        if 'duration_minutes' in self.fields:
+            self.fields['duration_minutes'].initial = 15
+            self.fields['duration_minutes'].disabled = True
+
 
         # Pre-fill client info if editing
         if self.instance and self.instance.pk:
