@@ -71,7 +71,7 @@
     <!-- Time Slots Table -->
     <div class="card shadow border-0">
         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Time Slots</h5>
+            <h5 class="mb-0">Time Slots ({{ page_obj.paginator.count }} total)</h5>
             {% if selected_day %}
             <small class="text-light">{{ selected_day|date:"D, M d, Y" }}</small>
             {% else %}
@@ -93,7 +93,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for slot in timeslots %}
+                        {% for slot in page_obj %}
                         <tr>
                             {% if is_admin %}
                             <td><strong>{{ slot.salesman.get_full_name }}</strong></td>
@@ -140,6 +140,39 @@
                 </table>
             </div>
         </div>
+        
+        <!-- Pagination -->
+        {% if page_obj.has_other_pages %}
+        <div class="card-footer bg-light">
+            <nav aria-label="Time slots pagination">
+                <ul class="pagination justify-content-center mb-0">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1{% if selected_cycle %}&cycle={{ selected_cycle.id }}{% endif %}{% if selected_salesman %}&salesman={{ selected_salesman }}{% endif %}{% if selected_day %}&day={{ selected_day }}{% endif %}{% if selected_type %}&type={{ selected_type }}{% endif %}">First</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if selected_cycle %}&cycle={{ selected_cycle.id }}{% endif %}{% if selected_salesman %}&salesman={{ selected_salesman }}{% endif %}{% if selected_day %}&day={{ selected_day }}{% endif %}{% if selected_type %}&type={{ selected_type }}{% endif %}">Previous</a>
+                    </li>
+                    {% endif %}
+                    
+                    <li class="page-item active">
+                        <span class="page-link">
+                            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                        </span>
+                    </li>
+                    
+                    {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if selected_cycle %}&cycle={{ selected_cycle.id }}{% endif %}{% if selected_salesman %}&salesman={{ selected_salesman }}{% endif %}{% if selected_day %}&day={{ selected_day }}{% endif %}{% if selected_type %}&type={{ selected_type }}{% endif %}">Next</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if selected_cycle %}&cycle={{ selected_cycle.id }}{% endif %}{% if selected_salesman %}&salesman={{ selected_salesman }}{% endif %}{% if selected_day %}&day={{ selected_day }}{% endif %}{% if selected_type %}&type={{ selected_type }}{% endif %}">Last</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

@@ -7,7 +7,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-temp-key')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
+ALLOWED_HOSTS = [
+    '28b903048114.ngrok-free.app', 'localhost', '127.0.0.1'
+]
+
+CSRF_TRUSTED_ORIGINS = ['https://28b903048114.ngrok-free.app']
 
 # INSTALLED APPS
 INSTALLED_APPS = [

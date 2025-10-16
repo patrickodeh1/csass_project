@@ -3,7 +3,7 @@ from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, Pa
 from django.contrib.auth.models import Group
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Submit, Row, Column, Field, Div, HTML
-from .models import Booking, Client, AvailableTimeSlot, PayrollAdjustment, SystemConfig, User
+from .models import Booking, Client, AvailableTimeSlot, PayrollAdjustment, SystemConfig, User, MessageTemplate
 from datetime import datetime, timedelta
 import logging
 from .utils import check_booking_conflicts
@@ -597,7 +597,11 @@ class PayrollAdjustmentForm(forms.ModelForm):
 class SystemConfigForm(forms.ModelForm):
     class Meta:
         model = SystemConfig
-        fields = ['company_name', 'timezone', 'default_commission_rate_in_person', 'default_commission_rate_zoom', 'zoom_link', 'reminder_lead_time_hours']
+        fields = [
+            'company_name', 'timezone', 
+            'default_commission_rate_in_person', 'default_commission_rate_zoom', 
+            'zoom_link', 'reminder_lead_time_hours'
+        ]
         widgets = {
             'company_name': forms.TextInput(attrs={'class': 'form-control'}),
             'timezone': forms.TextInput(attrs={'class': 'form-control'}),
@@ -610,13 +614,50 @@ class SystemConfigForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # Add help text for better user experience
+        # Add help text for better UX
         self.fields['company_name'].help_text = 'Company name displayed in emails and system'
         self.fields['timezone'].help_text = 'System timezone (e.g., America/New_York, UTC)'
         self.fields['default_commission_rate_in_person'].help_text = 'Default commission for in-person appointments ($)'
         self.fields['default_commission_rate_zoom'].help_text = 'Default commission for zoom appointments ($)'
         self.fields['zoom_link'].help_text = 'Default zoom meeting link for all zoom appointments'
         self.fields['reminder_lead_time_hours'].help_text = 'Hours before appointment to send reminder'
+
+
+class MessageTemplateForm(forms.ModelForm):
+    class Meta:
+        model = MessageTemplate
+        fields = ['message_type', 'email_subject', 'email_body', 'sms_body', 'is_active']
+        widgets = {
+            'message_type': forms.Select(attrs={'class': 'form-control'}),
+            'email_subject': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Email subject line'}),
+            'email_body': forms.Textarea(attrs={
+                'class': 'form-control', 
+                'rows': 10,
+                'placeholder': 'HTML email body. Use {client_name}, {salesman_name}, {business_name}, {appointment_date}, {appointment_time}, {company_name}'
+            }),
+            'sms_body': forms.Textarea(attrs={
+                'class': 'form-control', 
+                'rows': 3,
+                'maxlength': 320,
+                'placeholder': 'SMS message (max 320 chars). Same variables as email.'
+            }),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Add help text
+        self.fields['email_body'].help_text = 'Available variables: {client_name}, {salesman_name}, {business_name}, {appointment_date}, {appointment_time}, {company_name}'
+        self.fields['sms_body'].help_text = 'Max 320 characters. Same variables as email template.'
+        
+        # Add character counter for SMS
+        self.fields['sms_body'].widget.attrs['oninput'] = 'updateCharCount(this)'
+    
+    def clean_sms_body(self):
+        sms_body = self.cleaned_data.get('sms_body', '')
+        if len(sms_body) > 320:
+            raise forms.ValidationError('SMS message must be 320 characters or less.')
+        return sms_body
 
 
 class AvailableTimeSlotForm(forms.ModelForm):
@@ -683,3 +724,4 @@ class AvailableTimeSlotForm(forms.ModelForm):
                     )
         """
         return cleaned_data
+

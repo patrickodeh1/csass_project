@@ -18,6 +18,7 @@ urlpatterns = [
     
     # Calendar & Bookings
     path('calendar/', views.calendar_view, name='calendar'),
+    path('calendar/day/<str:date_str>/', views.calendar_day_detail, name='calendar_day_detail'),
     path('booking/new/', views.booking_create, name='booking_create'),
     path('booking/<int:pk>/', views.booking_detail, name='booking_detail'),
     path('booking/<int:pk>/edit/', views.booking_edit, name='booking_edit'),
@@ -63,7 +64,22 @@ urlpatterns = [
     
     # Settings (admiin)
     path('admiin/settings/', views.settings_view, name='settings'),
-    
+
     # Audit Log (admiin)
     path('admiin/audit-log/', views.audit_log_view, name='audit_log'),
+     
+    # Message template management
+    path('settings/templates/', views.message_templates_view, name='message_templates'),
+    path('settings/templates/create/', views.message_template_create, name='message_template_create'),
+    path('settings/templates/<int:pk>/edit/', views.message_template_edit, name='message_template_edit'),
+    path('settings/templates/<int:pk>/delete/', views.message_template_delete, name='message_template_delete'),
+    
+    # Drip campaign management
+    path('drip-campaigns/', views.drip_campaigns_view, name='drip_campaigns'),
+    path('drip-campaigns/<int:pk>/stop/', views.drip_campaign_stop, name='drip_campaign_stop'),
+    path('drip-campaigns/<int:pk>/resume/', views.drip_campaign_resume, name='drip_campaign_resume'),
+    
+    # Communication logs
+    path('communication-logs/', views.communication_logs_view, name='communication_logs'),
+
 ]

@@ -138,6 +138,9 @@ class User(AbstractBaseUser, PermissionsMixin):
                     self.reset_failed_login_attempts()
         return False
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._original_is_active_salesman = self.is_active_salesman
 
     def get_available_slots_for_date(self, date):
         """Get available time slots for a specific date"""
@@ -547,3 +550,176 @@ class AvailableTimeSlot(models.Model):
 
     def __str__(self):
         return f"{self.salesman.get_full_name()} - {self.date.strftime('%b %d, %Y')} {self.start_time} ({self.get_appointment_type_display()})"
+
+
+class MessageTemplate(models.Model):
+    """Store customizable email and SMS templates"""
+    MESSAGE_TYPES = [
+        ('booking_approved_agent', 'Booking Approved - To Agent'),
+        ('booking_approved_client', 'Booking Approved - To Client'),
+        ('booking_approved_salesman', 'Booking Approved - To Salesman'),
+        ('booking_reminder_client', 'Booking Reminder - To Client'),
+        ('booking_reminder_salesman', 'Booking Reminder - To Salesman'),
+        ('ad_day_1', 'Attended Drip - Day 1'),
+        ('ad_day_7', 'Attended Drip - Day 7'),
+        ('ad_day_14', 'Attended Drip - Day 14'),
+        ('ad_day_21', 'Attended Drip - Day 21'),
+        ('dna_day_1', 'Did Not Attend Drip - Day 1'),
+        ('dna_day_7', 'Did Not Attend Drip - Day 7'),
+        ('dna_day_30', 'Did Not Attend Drip - Day 30'),
+        ('dna_day_60', 'Did Not Attend Drip - Day 60'),
+        ('dna_day_90', 'Did Not Attend Drip - Day 90'),
+    ]
+    
+    message_type = models.CharField(max_length=50, choices=MESSAGE_TYPES, unique=True)
+    email_subject = models.CharField(max_length=200, blank=True)
+    email_body = models.TextField(help_text='HTML email template. Available variables: {client_name}, {salesman_name}, {business_name}, {appointment_date}, {appointment_time}, {company_name}')
+    sms_body = models.TextField(max_length=320, help_text='SMS message (max 320 chars). Same variables as email.')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['message_type']
+    
+    def __str__(self):
+        return f"{self.get_message_type_display()}"
+    
+    def render_email(self, context):
+        """Render email with context variables"""
+        subject = self.email_subject.format(**context)
+        body = self.email_body.format(**context)
+        return subject, body
+    
+    def render_sms(self, context):
+        """Render SMS with context variables"""
+        return self.sms_body.format(**context)
+
+
+class DripCampaign(models.Model):
+    """Track drip campaign progress for clients"""
+    CAMPAIGN_TYPES = [
+        ('attended', 'Attended (AD) - 21 Days'),
+        ('did_not_attend', 'Did Not Attend (DNA) - 90 Days'),
+    ]
+    
+    booking = models.ForeignKey('Booking', on_delete=models.CASCADE, related_name='drip_campaigns')
+    campaign_type = models.CharField(max_length=20, choices=CAMPAIGN_TYPES)
+    started_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    is_stopped = models.BooleanField(default=False)
+    stopped_at = models.DateTimeField(null=True, blank=True)
+    stopped_by = models.ForeignKey('User', null=True, blank=True, on_delete=models.SET_NULL, related_name='stopped_campaigns')
+    
+    class Meta:
+        ordering = ['-started_at']
+    
+    def __str__(self):
+        return f"{self.get_campaign_type_display()} - {self.booking.client.get_full_name()}"
+    
+    def stop_campaign(self, user):
+        """Stop all future messages in this campaign"""
+        self.is_active = False
+        self.is_stopped = True
+        self.stopped_at = timezone.now()
+        self.stopped_by = user
+        self.save()
+        
+        # Cancel all pending scheduled messages
+        self.scheduled_messages.filter(status='pending').update(status='canceled')
+
+
+class ScheduledMessage(models.Model):
+    """Individual scheduled message in a drip campaign"""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('sent', 'Sent'),
+        ('failed', 'Failed'),
+        ('canceled', 'Canceled'),
+    ]
+    
+    drip_campaign = models.ForeignKey(DripCampaign, on_delete=models.CASCADE, related_name='scheduled_messages')
+    message_template = models.ForeignKey(MessageTemplate, on_delete=models.CASCADE)
+    recipient_email = models.EmailField()
+    recipient_phone = models.CharField(max_length=20, blank=True)
+    scheduled_for = models.DateTimeField()
+    sent_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    error_message = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['scheduled_for']
+    
+    def __str__(self):
+        return f"{self.message_template.message_type} to {self.recipient_email} on {self.scheduled_for}"
+    
+    def send_message(self):
+        """Send this scheduled message"""
+        from .utils import send_drip_message
+        
+        if self.status != 'pending':
+            return False
+        
+        if not self.drip_campaign.is_active or self.drip_campaign.is_stopped:
+            self.status = 'canceled'
+            self.save()
+            return False
+        
+        try:
+            booking = self.drip_campaign.booking
+            context = {
+                'client_name': booking.client.get_full_name(),
+                'salesman_name': booking.salesman.get_full_name(),
+                'business_name': booking.client.business_name,
+                'appointment_date': booking.appointment_date.strftime('%B %d, %Y'),
+                'appointment_time': booking.appointment_time.strftime('%I:%M %p'),
+                'company_name': SystemConfig.get_config().company_name,
+            }
+            
+            success = send_drip_message(
+                message_template=self.message_template,
+                recipient_email=self.recipient_email,
+                recipient_phone=self.recipient_phone,
+                context=context
+            )
+            
+            if success:
+                self.status = 'sent'
+                self.sent_at = timezone.now()
+            else:
+                self.status = 'failed'
+                self.error_message = 'Failed to send message'
+            
+            self.save()
+            return success
+            
+        except Exception as e:
+            self.status = 'failed'
+            self.error_message = str(e)
+            self.save()
+            return False
+
+
+class CommunicationLog(models.Model):
+    """Log all communications sent (email + SMS)"""
+    COMM_TYPES = [
+        ('email', 'Email'),
+        ('sms', 'SMS'),
+    ]
+    
+    booking = models.ForeignKey('Booking', null=True, blank=True, on_delete=models.CASCADE, related_name='communications')
+    recipient_email = models.EmailField(blank=True)
+    recipient_phone = models.CharField(max_length=20, blank=True)
+    communication_type = models.CharField(max_length=10, choices=COMM_TYPES)
+    message_template = models.ForeignKey(MessageTemplate, null=True, blank=True, on_delete=models.SET_NULL)
+    subject = models.CharField(max_length=200, blank=True)
+    body = models.TextField()
+    sent_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, default='sent')
+    error_message = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-sent_at']
+    
+    def __str__(self):
+        return f"{self.communication_type} to {self.recipient_email or self.recipient_phone} at {self.sent_at}"

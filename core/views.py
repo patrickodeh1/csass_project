@@ -36,7 +36,11 @@ from django.utils.crypto import get_random_string
 from calendar import monthcalendar
 import logging
 from datetime import datetime, date, time, timedelta 
-
+from .models import MessageTemplate, DripCampaign, ScheduledMessage, CommunicationLog
+from .decorators import admin_required
+from .forms import MessageTemplateForm
+from .utils import start_drip_campaign
+import os
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -1011,10 +1015,9 @@ def booking_decline(request, pk):
     return render(request, 'booking_decline.html', {'booking': booking})
 
 
-
 @login_required
 def booking_mark_attended(request, pk):
-    """Mark a confirmed booking as attended (completed). Salesman (assigned) or admin only."""
+    """Mark a confirmed booking as attended (completed). Start AD drip campaign."""
     booking = get_object_or_404(Booking, pk=pk)
     is_admin = request.user.is_staff
     is_salesman = request.user.groups.filter(name='salesman').exists()
@@ -1032,12 +1035,23 @@ def booking_mark_attended(request, pk):
 
     booking.status = 'completed'
     booking.save()
-    messages.success(request, 'Booking marked as Attended (Completed).')
-    return redirect('calendar')
+    
+    # Start AD (Attended) drip campaign
+    try:
+        campaign = start_drip_campaign(booking, 'attended')
+        if campaign:
+            messages.success(request, 'Booking marked as Attended (Completed). AD drip campaign started.')
+        else:
+            messages.success(request, 'Booking marked as Attended (Completed).')
+    except Exception as e:
+        messages.warning(request, f'Booking marked as Attended but drip campaign failed: {str(e)}')
+    
+    return redirect('past_appointments')
+
 
 @login_required
 def booking_mark_dna(request, pk):
-    """Mark a confirmed booking as Did Not Attend (no_show). Salesman (assigned) or admin only."""
+    """Mark a confirmed booking as Did Not Attend (no_show). Start DNA drip campaign."""
     booking = get_object_or_404(Booking, pk=pk)
     is_admin = request.user.is_staff
     is_salesman = request.user.groups.filter(name='salesman').exists()
@@ -1055,8 +1069,37 @@ def booking_mark_dna(request, pk):
 
     booking.status = 'no_show'
     booking.save()
-    messages.success(request, 'Booking marked as Did Not Attend (DNA).')
-    return redirect('calendar')
+    
+    # Start DNA (Did Not Attend) drip campaign
+    try:
+        campaign = start_drip_campaign(booking, 'did_not_attend')
+        if campaign:
+            messages.success(request, 'Booking marked as Did Not Attend (DNA). DNA drip campaign started.')
+        else:
+            messages.success(request, 'Booking marked as Did Not Attend (DNA).')
+    except Exception as e:
+        messages.warning(request, f'Booking marked as DNA but drip campaign failed: {str(e)}')
+    
+    return redirect('past_appointments')
+    """Edit existing message template"""
+    template = get_object_or_404(MessageTemplate, pk=pk)
+    
+    if request.method == 'POST':
+        form = MessageTemplateForm(request.POST, instance=template)
+        if form.is_valid():
+            template = form.save()
+            messages.success(request, f'Message template "{template.get_message_type_display()}" updated successfully!')
+            return redirect('settings')
+    else:
+        form = MessageTemplateForm(instance=template)
+    
+    return render(request, 'message_template_form.html', {
+        'form': form, 
+        'title': 'Edit Message Template',
+        'template': template
+    })
+
+
 
 @login_required
 @admin_required
@@ -1703,21 +1746,32 @@ def user_deactivate(request, pk):
 @admin_required
 def settings_view(request):
     config = SystemConfig.get_config()
+    message_templates = MessageTemplate.objects.all().order_by('message_type')
+    
+    # Check if email/SMS are configured via environment variables
+    email_configured = bool(os.getenv('SENDGRID_API_KEY') or os.getenv('EMAIL_HOST_PASSWORD'))
+    sms_configured = bool(os.getenv('TWILIO_ACCOUNT_SID') and os.getenv('TWILIO_AUTH_TOKEN') and os.getenv('TWILIO_FROM_NUMBER'))
+    sms_enabled = os.getenv('SMS_ENABLED', 'false').lower() in ('true', '1', 'yes')
     
     if request.method == 'POST':
-        form = SystemConfigForm(request.POST, instance=config)
-        if form.is_valid():
-            config = form.save(commit=False)
-            config.updated_by = request.user
-            config.save()
-            messages.success(request, 'System settings updated successfully!')
-            return redirect('settings')
+        if 'save_general' in request.POST:
+            form = SystemConfigForm(request.POST, instance=config)
+            if form.is_valid():
+                config = form.save(commit=False)
+                config.updated_by = request.user
+                config.save()
+                messages.success(request, 'General settings updated successfully!')
+                return redirect('settings')
     else:
         form = SystemConfigForm(instance=config)
     
     context = {
         'form': form,
         'config': config,
+        'message_templates': message_templates,
+        'email_configured': email_configured,
+        'sms_configured': sms_configured,
+        'sms_enabled': sms_enabled,
     }
     
     return render(request, 'settings.html', context)
@@ -1780,7 +1834,7 @@ def audit_log_view(request):
 # ============================================================
 @login_required
 def timeslots_view(request):
-    """Main availability dashboard view using 2-week cycles with automatic generation."""
+    """Main availability dashboard view using 2-week cycles with automatic generation and pagination."""
     is_admin = request.user.is_staff
 
     # Auto-inactivate past and elapsed slots
@@ -1790,7 +1844,7 @@ def timeslots_view(request):
     except Exception:
         pass
 
-    # Ensure there's an active cycle; new cycle creation auto-generates slots via models.AvailabilityCycle.get_current_cycle
+    # Ensure there's an active cycle
     selected_cycle_id = request.GET.get('cycle')
     selected_salesman_id = request.GET.get('salesman') if is_admin else None
     cycles = AvailabilityCycle.objects.all().order_by('-start_date')
@@ -1813,7 +1867,7 @@ def timeslots_view(request):
     if not is_admin:
         slots = slots.filter(salesman=request.user)
 
-    # Order with active slots first, then by date/time so current day appears at the top; inactive sink to bottom
+    # Order with active slots first
     slots = slots.select_related('salesman', 'created_by').order_by('-is_active', 'date', 'start_time', 'salesman')
 
     # Handle admin actions
@@ -1828,12 +1882,17 @@ def timeslots_view(request):
                 messages.success(request, 'Current 2-week cycle deleted. A new cycle will be created automatically.')
             return redirect('timeslots')
 
+    # PAGINATION - Show 50 slots per page
+    paginator = Paginator(slots, 50)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
     salesmen = None
     if is_admin:
         salesmen = User.objects.filter(is_active_salesman=True, is_active=True).order_by('first_name', 'last_name')
 
     context = {
-        'timeslots': slots,
+        'page_obj': page_obj,  # Use page_obj instead of timeslots
         'cycles': cycles,
         'selected_cycle': cycle,
         'selected_day': selected_day,
@@ -1843,6 +1902,93 @@ def timeslots_view(request):
         'is_admin': is_admin,
     }
     return render(request, 'timeslots.html', context)
+
+
+# ============================================================
+# NEW: Day Detail View for Calendar
+# ============================================================
+
+@login_required
+def calendar_day_detail(request, date_str):
+    """Show all slots and bookings for a specific day"""
+    try:
+        selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        messages.error(request, 'Invalid date format.')
+        return redirect('calendar')
+    
+    is_admin = request.user.is_staff
+    is_salesman = request.user.groups.filter(name='salesman').exists()
+    is_remote_agent = request.user.groups.filter(name='remote_agent').exists()
+    
+    # Get filters
+    salesman_id = request.GET.get('salesman')
+    appointment_type = request.GET.get('type')
+    
+    # Get available slots
+    slots = AvailableTimeSlot.objects.filter(
+        is_active=True,
+        date=selected_date
+    ).select_related('salesman')
+    
+    if is_salesman and not is_admin:
+        slots = slots.none()  # Salesmen don't see available slots
+    elif salesman_id and is_admin:
+        slots = slots.filter(salesman_id=salesman_id)
+    
+    if appointment_type:
+        slots = slots.filter(appointment_type=appointment_type)
+    
+    slots = slots.order_by('start_time', 'salesman')
+    
+    # Get bookings
+    bookings = Booking.objects.filter(
+        appointment_date=selected_date
+    ).select_related('client', 'salesman', 'created_by')
+    
+    # Filter bookings by user role
+    if is_salesman and not is_admin:
+        bookings = bookings.filter(salesman=request.user)
+    elif is_remote_agent and not is_admin:
+        bookings = bookings.filter(created_by=request.user)
+    elif salesman_id and is_admin:
+        bookings = bookings.filter(salesman_id=salesman_id)
+    
+    if appointment_type:
+        bookings = bookings.filter(appointment_type=appointment_type)
+    
+    bookings = bookings.order_by('appointment_time')
+    
+    # Separate bookings by status
+    pending_bookings = list(bookings.filter(status='pending'))
+    confirmed_bookings = list(bookings.filter(status__in=['confirmed', 'completed']))
+    declined_bookings = list(bookings.filter(status='declined'))
+    
+    # Get salesmen for filter (admin only)
+    salesmen = None
+    if is_admin:
+        salesmen = User.objects.filter(
+            is_active_salesman=True,
+            is_active=True
+        ).order_by('first_name', 'last_name')
+    
+    context = {
+        'selected_date': selected_date,
+        'available_slots': slots,
+        'pending_bookings': pending_bookings,
+        'confirmed_bookings': confirmed_bookings,
+        'declined_bookings': declined_bookings,
+        'salesmen': salesmen,
+        'selected_salesman': salesman_id,
+        'selected_type': appointment_type,
+        'is_admin': is_admin,
+        'is_salesman': is_salesman and not is_admin,
+        'is_remote_agent': is_remote_agent and not is_admin,
+    }
+    
+    return render(request, 'calendar_day_detail.html', context)
+
+
 
 
 @login_required
@@ -1937,3 +2083,170 @@ def timeslot_delete(request, pk):
         'timeslot': timeslot,
         'is_admin': is_admin
     })
+
+@login_required
+@admin_required
+def message_templates_view(request):
+    """View all message templates"""
+    templates = MessageTemplate.objects.all().order_by('message_type')
+    
+    context = {
+        'message_templates': templates,
+    }
+    return render(request, 'message_templates.html', context)
+
+
+@login_required
+@admin_required
+def message_template_create(request):
+    """Create new message template"""
+    if request.method == 'POST':
+        form = MessageTemplateForm(request.POST)
+        if form.is_valid():
+            template = form.save()
+            messages.success(request, f'Message template "{template.get_message_type_display()}" created successfully!')
+            return redirect('settings')
+    else:
+        form = MessageTemplateForm()
+    
+    return render(request, 'message_template_form.html', {'form': form, 'title': 'Create Message Template'})
+
+
+@login_required
+@admin_required
+def message_template_edit(request, pk):
+    """Edit existing message template"""
+    template = get_object_or_404(MessageTemplate, pk=pk)
+    
+    if request.method == 'POST':
+        form = MessageTemplateForm(request.POST, instance=template)
+        if form.is_valid():
+            template = form.save()
+            messages.success(request, f'Message template "{template.get_message_type_display()}" updated successfully!')
+            return redirect('settings')
+    else:
+        form = MessageTemplateForm(instance=template)
+    
+    return render(request, 'message_template_form.html', {
+        'form': form, 
+        'title': 'Edit Message Template',
+        'template': template
+    })
+
+
+@login_required
+@admin_required
+def message_template_delete(request, pk):
+    """Delete message template"""
+    template = get_object_or_404(MessageTemplate, pk=pk)
+    
+    if request.method == 'POST':
+        template_name = template.get_message_type_display()
+        template.delete()
+        messages.success(request, f'Message template "{template_name}" deleted successfully!')
+        return redirect('settings')
+    
+    return render(request, 'message_template_delete.html', {'template': template})
+
+
+@login_required
+@admin_required
+def drip_campaigns_view(request):
+    """View all drip campaigns with filtering"""
+    campaigns = DripCampaign.objects.all().select_related('booking__client', 'booking__salesman').order_by('-started_at')
+    
+    # Filters
+    campaign_type = request.GET.get('type')
+    status = request.GET.get('status')
+    
+    if campaign_type:
+        campaigns = campaigns.filter(campaign_type=campaign_type)
+    
+    if status == 'active':
+        campaigns = campaigns.filter(is_active=True, is_stopped=False)
+    elif status == 'stopped':
+        campaigns = campaigns.filter(is_stopped=True)
+    elif status == 'completed':
+        # Campaigns where all scheduled messages are sent/failed/canceled
+        campaigns = campaigns.filter(is_active=True).exclude(
+            scheduled_messages__status='pending'
+        )
+    
+    # Pagination
+    paginator = Paginator(campaigns, 25)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'page_obj': page_obj,
+        'campaign_type': campaign_type,
+        'status': status,
+    }
+    return render(request, 'drip_campaigns.html', context)
+
+
+@login_required
+@admin_required
+def drip_campaign_stop(request, pk):
+    """Stop a drip campaign"""
+    campaign = get_object_or_404(DripCampaign, pk=pk)
+    
+    if request.method == 'POST':
+        campaign.stop_campaign(request.user)
+        messages.success(request, f'Drip campaign stopped for {campaign.booking.client.get_full_name()}')
+        return redirect('drip_campaigns')
+    
+    return render(request, 'drip_campaign_stop.html', {'campaign': campaign})
+
+
+@login_required
+@admin_required
+def drip_campaign_resume(request, pk):
+    """Resume a stopped drip campaign"""
+    campaign = get_object_or_404(DripCampaign, pk=pk)
+    
+    if request.method == 'POST':
+        if campaign.is_stopped:
+            campaign.is_active = True
+            campaign.is_stopped = False
+            campaign.save()
+            
+            # Reactivate pending messages
+            campaign.scheduled_messages.filter(status='canceled').update(status='pending')
+            
+            messages.success(request, f'Drip campaign resumed for {campaign.booking.client.get_full_name()}')
+        else:
+            messages.warning(request, 'Campaign is not stopped')
+        
+        return redirect('drip_campaigns')
+    
+    return render(request, 'drip_campaign_resume.html', {'campaign': campaign})
+
+
+@login_required
+@admin_required
+def communication_logs_view(request):
+    """View all communication logs (emails + SMS)"""
+    logs = CommunicationLog.objects.all().order_by('-sent_at')
+    
+    # Filters
+    comm_type = request.GET.get('type')
+    status = request.GET.get('status')
+    
+    if comm_type:
+        logs = logs.filter(communication_type=comm_type)
+    
+    if status:
+        logs = logs.filter(status=status)
+    
+    # Pagination
+    paginator = Paginator(logs, 50)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'page_obj': page_obj,
+        'comm_type': comm_type,
+        'status': status,
+    }
+    return render(request, 'communication_logs.html', context)

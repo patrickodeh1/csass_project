@@ -102,7 +102,12 @@
                         {% for week in calendar_weeks %}
                         <tr>
                             {% for day_info in week %}
-                            <td class="calendar-day" style="height: 180px; vertical-align: top; {% if not day_info.is_current_month %}background-color: #f8f9fa;{% endif %}">
+                            <td class="calendar-day" 
+                                style="height: 180px; vertical-align: top; {% if not day_info.is_current_month %}background-color: #f8f9fa;{% endif %} cursor: pointer; position: relative;"
+                                {% if day_info.is_current_month %}
+                                onclick="window.location.href='{% url 'calendar_day_detail' day_info.date|date:'Y-m-d' %}{% if selected_salesman %}?salesman={{ selected_salesman }}{% endif %}{% if selected_type %}{% if selected_salesman %}&{% else %}?{% endif %}type={{ selected_type }}{% endif %}'"
+                                title="Click to view all details for {{ day_info.date|date:'M d, Y' }}"
+                                {% endif %}>
                                 {% if day_info.is_current_month %}
                                     <div class="fw-bold mb-2 text-dark fs-5">{{ day_info.day }}</div>
                                     
@@ -110,18 +115,18 @@
                                     {% for appt in day_info.appointments|slice:":3" %}
                                     {% if appt.status == 'pending' %}
                                     <div class="appointment-card mb-1 w-100 border border-2 rounded p-2" 
-                                        style="cursor: pointer; border-color: #ffc107 !important; background-color: #fff3cd;"
-                                        onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
+                                        style="border-color: #ffc107 !important; background-color: #fff3cd;"
+                                        onclick="event.stopPropagation(); window.location.href='{% url 'booking_detail' appt.id %}'"
                                         title="Pending: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
                                     {% elif appt.status == 'confirmed' %}
                                     <div class="appointment-card mb-1 w-100 border border-2 rounded p-2" 
-                                        style="cursor: pointer; border-color: #007bff !important; background-color: #cce5ff;"
-                                        onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
+                                        style="border-color: #007bff !important; background-color: #cce5ff;"
+                                        onclick="event.stopPropagation(); window.location.href='{% url 'booking_detail' appt.id %}'"
                                         title="Confirmed: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
                                     {% else %}
                                     <div class="appointment-card mb-1 w-100 border border-2 rounded p-2" 
-                                        style="cursor: pointer; border-color: #dc3545 !important; background-color: #f8d7da;"
-                                        onclick="window.location.href='{% url 'booking_detail' appt.id %}'"
+                                        style="border-color: #dc3545 !important; background-color: #f8d7da;"
+                                        onclick="event.stopPropagation(); window.location.href='{% url 'booking_detail' appt.id %}'"
                                         title="Appointment: {{ appt.appointment_time|date:'g:i A' }} - {{ appt.client.business_name }}">
                                     {% endif %}
                                         <div class="text-dark fw-semibold small"><i class="bi bi-clock"></i> <strong>{{ appt.appointment_time|date:"g:iA" }}</strong></div>
@@ -141,8 +146,7 @@
                                     {# Remote agents: show available slots only, no bookings #}
                                     {% for slot in day_info.available_slots|slice:":3" %}
                                     <div class="available-slot mb-1 w-100 border border-success border-2 rounded p-2 bg-success bg-opacity-10" 
-                                        style="cursor: pointer;" 
-                                        onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'"
+                                        onclick="event.stopPropagation(); window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'"
                                         title="Click to book: {{ slot.time|date:'g:i A' }} with {{ slot.salesman.get_full_name }}">
                                         <div class="text-dark fw-semibold small"><i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:iA" }}</strong></div>
                                         <div class="text-truncate text-dark small"><i class="bi bi-person-badge"></i> {{ slot.salesman.first_name }}</div>
@@ -159,8 +163,8 @@
                                     {% else %}
                                     {% for booking in day_info.pending_bookings|slice:":1" %}
                                     <div class="mb-1 w-100" 
-                                        style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #ffc107; background: #fff3cd; padding: 6px 8px; border-radius: 4px;"
-                                        onclick="window.location.href='{% url 'booking_detail' booking.id %}'"
+                                        style="font-size: 0.75rem; text-align: left; border: 2px solid #ffc107; background: #fff3cd; padding: 6px 8px; border-radius: 4px;"
+                                        onclick="event.stopPropagation(); window.location.href='{% url 'booking_detail' booking.id %}'"
                                         title="Pending: {{ booking.appointment_time|date:'g:i A' }} - {{ booking.client.business_name }}">
                                         <div><i class="bi bi-hourglass-split"></i> <strong>{{ booking.appointment_time|date:"g:iA" }}</strong></div>
                                         <div class="text-truncate"><i class="bi bi-briefcase"></i> {{ booking.client.business_name }}</div>
@@ -172,8 +176,8 @@
                                     
                                     {% for booking in day_info.confirmed_bookings|slice:":1" %}
                                     <div class="mb-1 w-100" 
-                                        style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #007bff; background: #cce5ff; padding: 6px 8px; border-radius: 4px;"
-                                        onclick="window.location.href='{% url 'booking_detail' booking.id %}'"
+                                        style="font-size: 0.75rem; text-align: left; border: 2px solid #007bff; background: #cce5ff; padding: 6px 8px; border-radius: 4px;"
+                                        onclick="event.stopPropagation(); window.location.href='{% url 'booking_detail' booking.id %}'"
                                         title="Confirmed: {{ booking.appointment_time|date:'g:i A' }} - {{ booking.client.business_name }}">
                                         <div><i class="bi bi-check-circle"></i> <strong>{{ booking.appointment_time|date:"g:iA" }}</strong></div>
                                         <div class="text-truncate"><i class="bi bi-briefcase"></i> {{ booking.client.business_name }}</div>
@@ -185,8 +189,8 @@
                                     
                                     {% for booking in day_info.declined_bookings|slice:":1" %}
                                     <div class="mb-1 w-100" 
-                                        style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #dc3545; background: #f8d7da; padding: 6px 8px; border-radius: 4px;"
-                                        onclick="window.location.href='{% url 'booking_detail' booking.id %}'"
+                                        style="font-size: 0.75rem; text-align: left; border: 2px solid #dc3545; background: #f8d7da; padding: 6px 8px; border-radius: 4px;"
+                                        onclick="event.stopPropagation(); window.location.href='{% url 'booking_detail' booking.id %}'"
                                         title="Appointment: {{ booking.appointment_time|date:'g:i A' }} - {{ booking.client.business_name }}">
                                         <div><i class="bi bi-briefcase"></i> <strong>{{ booking.appointment_time|date:"g:iA" }}</strong></div>
                                         <div class="text-truncate"><i class="bi bi-briefcase"></i> {{ booking.client.business_name }}</div>
@@ -201,8 +205,8 @@
                                     {% if user.is_staff or not all_bookings %}
                                         {% for slot in day_info.available_slots|slice:":2" %}
                                         <div class="available-slot mb-1 w-100" 
-                                            style="cursor: pointer; font-size: 0.75rem; text-align: left; border: 2px solid #28a745; background: #d4edda; padding: 6px 8px; border-radius: 4px;" 
-                                            onclick="window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'"
+                                            style="font-size: 0.75rem; text-align: left; border: 2px solid #28a745; background: #d4edda; padding: 6px 8px; border-radius: 4px;" 
+                                            onclick="event.stopPropagation(); window.location.href='{% url 'booking_create' %}?date={{ slot.date|date:'Y-m-d' }}&start_time={{ slot.time|date:'H:i' }}&end_time={{ slot.time|date:'H:i' }}&salesman={{ slot.salesman.id }}&type={{ slot.appointment_type }}'"
                                             title="Click to book: {{ slot.time|date:'g:i A' }} with {{ slot.salesman.get_full_name }}">
                                             <div><i class="bi bi-plus-circle"></i> <strong>{{ slot.time|date:"g:iA" }}</strong></div>
                                             <div class="text-truncate"><i class="bi bi-person-badge"></i> {{ slot.salesman.first_name }}</div>
@@ -229,6 +233,13 @@
                                     {% endwith %}
                                     
                                     {% endif %}
+                                    
+                                    <!-- View All Link -->
+                                    <div style="position: absolute; bottom: 5px; right: 5px;">
+                                        <small class="text-primary fw-bold" style="font-size: 0.65rem;">
+                                            <i class="bi bi-arrow-right-circle"></i> View All
+                                        </small>
+                                    </div>
                                 {% endif %}
                             </td>
                             {% endfor %}

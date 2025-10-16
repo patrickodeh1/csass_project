@@ -1,7 +1,8 @@
 from django.db.models.signals import post_save, post_delete
 from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import receiver
-from .models import User, Booking, PayrollPeriod, AvailableTimeSlot, AuditLog, Client, PayrollAdjustment
+from .models import User, Booking, PayrollPeriod, AvailableTimeSlot, AuditLog, Client, PayrollAdjustment, AvailabilityCycle
+from .utils import generate_timeslots_for_cycle
 from django.utils import timezone
 import json
 
@@ -48,7 +49,7 @@ def log_booking_changes(sender, instance, created, **kwargs):
         entity_type='Booking',
         entity_id=instance.id,
         changes=changes
-    )
+        )
 
 @receiver(post_save, sender=User)
 def log_user_changes(sender, instance, created, **kwargs):
@@ -67,6 +68,27 @@ def log_user_changes(sender, instance, created, **kwargs):
             entity_id=instance.id,
             changes=changes
         )
+
+@receiver(post_save, sender=User)
+def auto_generate_timeslots_for_salesman(sender, instance, created, **kwargs):
+    """
+    Automatically generate timeslots for a new salesman or when a user becomes an active salesman.
+    """
+    # Only proceed if the user is an active salesman
+    if instance.is_active_salesman:
+        # Check if it's a new salesman or if is_active_salesman just changed to True
+        if created or (not instance._original_is_active_salesman and instance.is_active_salesman):
+            # Ensure an AvailabilityCycle exists and then generate timeslots for this salesman
+            AvailabilityCycle.get_current_cycle() # This will create a cycle if none exists
+            
+            # Generate timeslots for this specific salesman
+            # We need to call generate_timeslots_for_cycle with the specific salesman
+            # However, generate_timeslots_for_cycle currently generates for ALL active salesmen.
+            # I need to modify generate_timeslots_for_cycle to accept a specific salesman,
+            # or create a new utility function for a single salesman.
+            # For now, I will call the existing function, but this is a point of improvement.
+            # I will modify generate_timeslots_for_cycle to accept a salesman argument.
+            generate_timeslots_for_cycle(salesman=instance)
 
 @receiver(post_save, sender=Client)
 def log_client_changes(sender, instance, created, **kwargs):
