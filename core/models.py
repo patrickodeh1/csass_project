@@ -432,8 +432,10 @@ class SystemConfig(models.Model):
     buffer_time_minutes = models.IntegerField(default=30)
     zoom_link = models.URLField(
         blank=True,
-        default='us04web.zoom.us/j/77703295752?pwd=n8xdNGWmJa7mFnn1JlFwUw0C0jXNH0.1'
+        default='https://us04web.zoom.us/j/77703295752?pwd=n8xdNGWmJa7mFnn1JlFwUw0C0jXNH0.1'
         )
+    zoom_enabled = models.BooleanField(default=True, help_text="Enable/disable Zoom appointment bookings")
+    in_person_enabled = models.BooleanField(default=True, help_text="Enable/disable in-person appointment bookings")
     reminder_lead_time_hours = models.IntegerField(default=24)
     max_advance_booking_days = models.IntegerField(default=90)
     min_advance_booking_hours = models.IntegerField(default=2)
@@ -447,9 +449,50 @@ class SystemConfig(models.Model):
         return config
     
     def save(self, *args, **kwargs):
-        self.id = 1
-        super().save(*args, **kwargs)
     
+        self.id = 1
+        
+        # Store the original state to check for changes
+        if self.pk:
+            original = SystemConfig.objects.get(pk=self.pk)
+            today = timezone.now().date()
+            
+            # If zoom was enabled but now disabled, deactivate zoom slots
+            if original.zoom_enabled and not self.zoom_enabled:
+                AvailableTimeSlot.objects.filter(
+                    appointment_type='zoom',
+                    is_active=True
+                ).update(is_active=False)
+            
+            # If zoom was disabled but now enabled, reactivate FUTURE zoom slots
+            elif not original.zoom_enabled and self.zoom_enabled:
+                AvailableTimeSlot.objects.filter(
+                    appointment_type='zoom',
+                    is_active=False,
+                    date__gte=today  # Only reactivate current/future slots
+                ).exclude(
+                    bookings__status__in=['pending', 'confirmed', 'completed']
+                ).update(is_active=True)
+            
+            # If in_person was enabled but now disabled, deactivate in-person slots
+            if original.in_person_enabled and not self.in_person_enabled:
+                AvailableTimeSlot.objects.filter(
+                    appointment_type='in_person',
+                    is_active=True
+                ).update(is_active=False)
+            
+            # If in_person was disabled but now enabled, reactivate FUTURE in-person slots
+            elif not original.in_person_enabled and self.in_person_enabled:
+                AvailableTimeSlot.objects.filter(
+                    appointment_type='in_person',
+                    is_active=False,
+                    date__gte=today  # Only reactivate current/future slots
+                ).exclude(
+                    bookings__status__in=['pending', 'confirmed', 'completed']
+                ).update(is_active=True)
+        
+        super().save(*args, **kwargs)
+        
     def __str__(self):
         return f"System Configuration - {self.company_name}"
 

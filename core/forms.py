@@ -603,7 +603,8 @@ class SystemConfigForm(forms.ModelForm):
         fields = [
             'company_name', 'timezone', 
             'default_commission_rate_in_person', 'default_commission_rate_zoom', 
-            'zoom_link', 'reminder_lead_time_hours'
+            'zoom_link', 'reminder_lead_time_hours',
+            'zoom_enabled', 'in_person_enabled'
         ]
         widgets = {
             'company_name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -612,6 +613,8 @@ class SystemConfigForm(forms.ModelForm):
             'default_commission_rate_zoom': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'zoom_link': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://zoom.us/j/...'}),
             'reminder_lead_time_hours': forms.NumberInput(attrs={'class': 'form-control'}),
+            'zoom_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'in_person_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
     
     def __init__(self, *args, **kwargs):
@@ -624,7 +627,8 @@ class SystemConfigForm(forms.ModelForm):
         self.fields['default_commission_rate_zoom'].help_text = 'Default commission for zoom appointments ($)'
         self.fields['zoom_link'].help_text = 'Default zoom meeting link for all zoom appointments'
         self.fields['reminder_lead_time_hours'].help_text = 'Hours before appointment to send reminder'
-
+        self.fields['zoom_enabled'].help_text = 'Enable Zoom appointments. Disabling this will deactivate all active Zoom time slots.'
+        self.fields['in_person_enabled'].help_text = 'Enable in-person appointments. Disabling this will deactivate all active in-person time slots.'
 
 class MessageTemplateForm(forms.ModelForm):
     class Meta:

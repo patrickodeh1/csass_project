@@ -1764,8 +1764,11 @@ def settings_view(request):
     sms_configured = bool(os.getenv('TWILIO_ACCOUNT_SID') and os.getenv('TWILIO_AUTH_TOKEN') and os.getenv('TWILIO_FROM_NUMBER'))
     sms_enabled = os.getenv('SMS_ENABLED', 'false').lower() in ('true', '1', 'yes')
     
+    # Handle POST request FIRST
     if request.method == 'POST':
-        if 'save_general' in request.POST:
+        # Check if it's a general settings save (or just any POST to this form)
+        # Since button name might not be included, check for form fields instead
+        if 'company_name' in request.POST or 'save_general' in request.POST:
             form = SystemConfigForm(request.POST, instance=config)
             if form.is_valid():
                 config = form.save(commit=False)
@@ -1773,7 +1776,14 @@ def settings_view(request):
                 config.save()
                 messages.success(request, 'General settings updated successfully!')
                 return redirect('settings')
+            else:
+                # Form has errors - will be displayed in template
+                messages.error(request, 'Please correct the errors below.')
+        else:
+            # Other POST action (like template management)
+            form = SystemConfigForm(instance=config)
     else:
+        # GET request - initialize fresh form
         form = SystemConfigForm(instance=config)
     
     context = {
@@ -1786,7 +1796,6 @@ def settings_view(request):
     }
     
     return render(request, 'settings.html', context)
-
 # ============================================================
 # Audit Log Views (Admin Only)
 # ============================================================

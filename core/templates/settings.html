@@ -71,6 +71,31 @@
                                     <label class="form-label">Default Zoom Link</label>
                                     {{ form.zoom_link }}
                                 </div>
+                                <h6 class="border-bottom pb-2 mb-3 mt-4">Appointment Type Settings</h6>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <div class="form-check form-switch">
+                                            {{ form.zoom_enabled }}
+                                            <label class="form-check-label" for="{{ form.zoom_enabled.id_for_label }}">
+                                                <strong>Enable Zoom Appointments</strong>
+                                            </label>
+                                        </div>
+                                        <small class="form-text text-muted d-block mt-2">
+                                            {{ form.zoom_enabled.help_text }}
+                                        </small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <div class="form-check form-switch">
+                                            {{ form.in_person_enabled }}
+                                            <label class="form-check-label" for="{{ form.in_person_enabled.id_for_label }}">
+                                                <strong>Enable In-Person Appointments</strong>
+                                            </label>
+                                        </div>
+                                        <small class="form-text text-muted d-block mt-2">
+                                            {{ form.in_person_enabled.help_text }}
+                                        </small>
+                                    </div>
+                                </div>
 
                                 <h6 class="border-bottom pb-2 mb-3 mt-4">Notification Settings</h6>
                                 <div class="mb-3">
