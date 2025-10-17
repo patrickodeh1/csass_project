@@ -53,6 +53,15 @@
                         <div class="text-center">
                             <a href="{% url 'password_reset' %}" class="text-decoration-none small">Forgot Password?</a>
                         </div>
+
+                        <!-- Registration Link for Agents -->
+                    <div class="card bg-light border-0">
+                        <div class="card-body text-center">
+                            <p class="mb-2 text-muted">New remote agent?</p>
+                            <a href="{% url 'agent_registration' %}" class="btn btn-outline-success w-100">
+                                Register as Agent
+                            </a>
+                        </div>
                     </form>
                 </div>
             </div>

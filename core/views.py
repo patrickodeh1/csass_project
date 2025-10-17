@@ -11,13 +11,15 @@ from django.contrib.auth.views import (
     PasswordResetView, PasswordResetDoneView, 
     PasswordResetConfirmView, PasswordResetCompleteView
 )
+from django.views.decorators.http import require_http_methods
+from django.db import transaction
 import csv
 from django.db.models import Count, Case, When, IntegerField
 from django.urls import reverse_lazy
 from .models import (Booking, Client, PayrollPeriod, PayrollAdjustment, 
                      SystemConfig, AvailableTimeSlot, AvailabilityCycle, AuditLog, User)
 from .forms import (LoginForm, BookingForm, CancelBookingForm, AudioForm,
-                    PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
+                    PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, AgentRegistrationForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
 from .decorators import group_required, admin_required, remote_agent_required
 from .utils import (
     get_current_payroll_period,
@@ -2277,3 +2279,63 @@ def communication_logs_view(request):
         'failed_count': totals['failed_count'],
     }
     return render(request, 'communication_logs.html', context)
+
+
+
+@require_http_methods(["GET", "POST"])
+def agent_registration(request):
+    """Allow agents to self-register using simplified UserForm"""
+    
+    # If already logged in, redirect to calendar
+    if request.user.is_authenticated:
+        return redirect('calendar')
+    
+    if request.method == 'POST':
+        form = AgentRegistrationForm(request.POST)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    user = form.save(commit=False)
+                    
+                    # Force role to remote_agent only
+                    user.save()
+                    user.groups.clear()
+                    
+                    from django.contrib.auth.models import Group
+                    agent_group, created = Group.objects.get_or_create(name='remote_agent')
+                    user.groups.add(agent_group)
+                    
+                    # Get the password that was set
+                    password = form.cleaned_data.get('password')
+                    if password:
+                        messages.success(
+                            request,
+                            f'✓ Registration successful! Welcome, {user.get_full_name()}! '
+                            f'Your Employee ID is {user.employee_id}. You can now log in with your credentials.'
+                        )
+                    else:
+                        temp_password = user.plain_text_password
+                        messages.success(
+                            request,
+                            f'✓ Registration successful! Welcome, {user.get_full_name()}! '
+                            f'Your Employee ID is {user.employee_id}. '
+                            f'Temporary Password: {temp_password} (Please save this securely)'
+                        )
+                    
+                    logger.info(f"Agent self-registered: {user.username}, Employee ID: {user.employee_id}")
+                    return redirect('login')
+                    
+            except Exception as e:
+                logger.error(f"Error during agent registration: {str(e)}")
+                messages.error(request, f'Registration failed: {str(e)}')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f'{error}')
+    else:
+        form = AgentRegistrationForm()
+    
+    return render(request, 'agent_registration.html', {
+        'form': form,
+        'title': 'Register as Remote Agent'
+    })

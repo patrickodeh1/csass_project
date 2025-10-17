@@ -728,3 +728,127 @@ class AvailableTimeSlotForm(forms.ModelForm):
         """
         return cleaned_data
 
+
+class AgentRegistrationForm(forms.ModelForm):
+    """Simplified self-registration form for remote agents - uses UserForm logic"""
+    username = forms.CharField(
+        max_length=150, 
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        help_text='Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.'
+    )
+    first_name = forms.CharField(max_length=100, required=True, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    last_name = forms.CharField(max_length=100, required=True, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    email = forms.EmailField(required=True, widget=forms.EmailInput(attrs={'class': 'form-control'}))
+    phone_number = forms.CharField(max_length=20, required=True, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    
+    password = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control', 
+            'placeholder': 'Leave blank to auto-generate a temporary password'
+        }),
+        help_text='Leave blank if you want a temporary password to be generated.',
+        min_length=4,
+        strip=False
+    )
+    password_confirm = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-control', 
+            'placeholder': 'Confirm password'
+        }),
+        label='Confirm Password',
+        strip=False
+    )
+    
+    class Meta:
+        model = User
+        fields = ['username', 'first_name', 'last_name', 'email', 'phone_number']
+    
+    def clean_username(self):
+        username = self.cleaned_data.get('username')
+        if User.objects.filter(username=username).exists():
+            raise forms.ValidationError("A user with this username already exists.")
+        return username
+    
+    def clean_email(self):
+        email = self.cleaned_data.get('email')
+        if User.objects.filter(email=email).exists():
+            raise forms.ValidationError("A user with this email already exists.")
+        return email
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get('password', '').strip() if cleaned_data.get('password') else ''
+        password_confirm = cleaned_data.get('password_confirm', '').strip() if cleaned_data.get('password_confirm') else ''
+        
+        # Only validate if at least one password field is filled
+        if password or password_confirm:
+            if password != password_confirm:
+                raise forms.ValidationError("Passwords do not match.")
+            if password and len(password) < 4:
+                raise forms.ValidationError("Password must be at least 4 characters long.")
+        
+        return cleaned_data
+    
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        
+        # Check if password was provided in form data
+        password_from_form = self.cleaned_data.get('password')
+        
+        if password_from_form:
+            # Password provided - use it
+            user.set_password(password_from_form)
+            user.plain_text_password = password_from_form
+        else:
+            # No password provided - generate temp password (SAME LOGIC AS user_create)
+            from django.utils.crypto import get_random_string
+            temp_password = get_random_string(length=12)
+            user.set_password(temp_password)
+            user.plain_text_password = temp_password
+        
+        # AUTO-GENERATE employee_id (SAME LOGIC AS UserForm)
+        if not user.employee_id:
+            with transaction.atomic():
+                max_attempts = 100
+                for attempt in range(max_attempts):
+                    existing_ids = User.objects.filter(
+                        employee_id__startswith='EMP'
+                    ).values_list('employee_id', flat=True)
+                    
+                    numbers = []
+                    for emp_id in existing_ids:
+                        try:
+                            num = int(emp_id.replace('EMP', ''))
+                            numbers.append(num)
+                        except (ValueError, AttributeError):
+                            continue
+                    
+                    if numbers:
+                        new_number = max(numbers) + 1
+                    else:
+                        new_number = 1
+                    
+                    new_employee_id = f'EMP{new_number:05d}'
+                    
+                    if not User.objects.filter(employee_id=new_employee_id).exists():
+                        user.employee_id = new_employee_id
+                        logger.debug(f"Assigned employee_id: {user.employee_id}")
+                        break
+                else:
+                    raise forms.ValidationError("Unable to generate unique employee ID. Please try again.")
+        
+        # Set as active user
+        user.is_active = True
+        
+        if commit:
+            try:
+                user.save()
+                logger.info(f"Agent self-registered: {user.username}, Employee ID: {user.employee_id}, Password stored: {bool(user.plain_text_password)}")
+            except Exception as e:
+                logger.error(f"Error saving agent: {str(e)}")
+                raise forms.ValidationError(f"Error saving user: {str(e)}")
+        
+        return user
