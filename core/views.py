@@ -1081,55 +1081,58 @@ def booking_mark_dna(request, pk):
         messages.warning(request, f'Booking marked as DNA but drip campaign failed: {str(e)}')
     
     return redirect('past_appointments')
-    """Edit existing message template"""
-    template = get_object_or_404(MessageTemplate, pk=pk)
-    
-    if request.method == 'POST':
-        form = MessageTemplateForm(request.POST, instance=template)
-        if form.is_valid():
-            template = form.save()
-            messages.success(request, f'Message template "{template.get_message_type_display()}" updated successfully!')
-            return redirect('settings')
-    else:
-        form = MessageTemplateForm(instance=template)
-    
-    return render(request, 'message_template_form.html', {
-        'form': form, 
-        'title': 'Edit Message Template',
-        'template': template
-    })
-
 
 
 @login_required
-@admin_required
 def past_appointments_view(request):
-    """Admin page to view past appointments and manage AD/DNA."""
+    """View past appointments and manage AD/DNA - Admin sees all, Salesman sees only their own"""
     today_date = timezone.now().date()
     status_filter = request.GET.get('status')
     salesman_id = request.GET.get('salesman')
-
+    
+    is_admin = request.user.is_staff
+    is_salesman = request.user.groups.filter(name='salesman').exists()
+    
+    # Check permissions
+    if not (is_admin or is_salesman):
+        messages.error(request, "You don't have permission to view past appointments.")
+        return redirect('calendar')
+    
+    # Base queryset - past appointments only
     qs = Booking.objects.filter(
         appointment_date__lt=today_date,
         status__in=['confirmed', 'completed', 'no_show']
     ).select_related('client', 'salesman').order_by('-appointment_date', '-appointment_time')
-
+    
+    # Filter by user role
+    if is_salesman and not is_admin:
+        # Salesmen only see their own appointments
+        qs = qs.filter(salesman=request.user)
+    elif salesman_id and is_admin:
+        # Admins can filter by salesman
+        qs = qs.filter(salesman_id=salesman_id)
+    
+    # Apply status filter
     if status_filter in ['confirmed', 'completed', 'no_show']:
         qs = qs.filter(status=status_filter)
-    if salesman_id:
-        qs = qs.filter(salesman_id=salesman_id)
-
+    
+    # Pagination
     paginator = Paginator(qs, 25)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
-
-    salesmen = User.objects.filter(is_active_salesman=True, is_active=True).order_by('first_name', 'last_name')
-
+    
+    # Get salesmen list (for admin dropdown only)
+    salesmen = None
+    if is_admin:
+        salesmen = User.objects.filter(is_active_salesman=True, is_active=True).order_by('first_name', 'last_name')
+    
     context = {
         'page_obj': page_obj,
         'salesmen': salesmen,
         'status_filter': status_filter,
         'selected_salesman': salesman_id,
+        'is_admin': is_admin,
+        'is_salesman': is_salesman and not is_admin,
     }
     return render(request, 'past_appointments.html', context)
 

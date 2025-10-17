@@ -69,6 +69,11 @@
                                 {% if user.is_staff %}Time Slots{% else %}My Availability{% endif %}
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white {% if request.resolver_match.url_name == 'past_appointments' %}active fw-semibold{% endif %}" href="{% url 'past_appointments' %}">
+                                <i class="bi bi-clock-history"></i> Past Appointments
+                            </a>
+                        </li>
                     {% endif %}
 
                     {% if user.is_staff %}
@@ -107,9 +112,6 @@
                             </a></li>
                             <li><a class="dropdown-item" href="{% url 'audit_log' %}">
                                 <i class="bi bi-journal-text"></i> Audit Log
-                            </a></li>
-                            <li><a class="dropdown-item" href="{% url 'past_appointments' %}">
-                                <i class="bi bi-clock-history"></i> Past Appointments
                             </a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{% url 'logout' %}">

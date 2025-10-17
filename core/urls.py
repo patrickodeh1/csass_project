@@ -23,9 +23,11 @@ urlpatterns = [
     path('booking/<int:pk>/', views.booking_detail, name='booking_detail'),
     path('booking/<int:pk>/edit/', views.booking_edit, name='booking_edit'),
     path('booking/<int:pk>/cancel/', views.booking_cancel, name='booking_cancel'),
-    path('booking/<int:pk>/attended/', views.booking_mark_attended, name='booking_mark_attended'),
-    path('booking/<int:pk>/dna/', views.booking_mark_dna, name='booking_mark_dna'),
-    path('admiin/past-appointments/', views.past_appointments_view, name='past_appointments'),
+
+    # Mark attendance - accessible by admin AND salesmen (for their own bookings)
+    path('past-appointments/', views.past_appointments_view, name='past_appointments'),    
+    path('booking/<int:pk>/mark-attended/', views.booking_mark_attended, name='booking_mark_attended'),
+    path('booking/<int:pk>/mark-dna/', views.booking_mark_dna, name='booking_mark_dna'),
     
     # Booking Approvals (Admin & Salesman)
     path('bookings/pending/', views.pending_bookings_view, name='pending_bookings'),
