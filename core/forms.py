@@ -28,6 +28,27 @@ class UserForm(forms.ModelForm):
         required=False, 
         widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'})
     )
+    paypal_email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={'class': 'form-control'}))
+    bitcoin_wallet_address = forms.CharField(
+        max_length=255, 
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
+    ACH_bank_name = forms.CharField(
+        max_length=100, 
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
+    ACH_account_number = forms.CharField(
+        max_length=50, 
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
+    ACH_routing_number = forms.CharField(
+        max_length=50,
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
     is_active_salesman = forms.BooleanField(required=False)
     hire_date = forms.DateField(widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}))
     
@@ -117,7 +138,11 @@ class UserForm(forms.ModelForm):
    
     def save(self, commit=True):
         user = super().save(commit=False)
-        
+        user.paypal_email = self.cleaned_data.get('paypal_email', '')
+        user.bitcoin_wallet_address = self.cleaned_data.get('bitcoin_wallet_address', '')
+        user.ACH_account_number = self.cleaned_data.get('ACH_account_number', '')
+        user.ACH_routing_number = self.cleaned_data.get('ACH_routing_number', '')
+        user.ACH_bank_name = self.cleaned_data.get('ACH_bank_name', '')
         # Set password only if provided in form data
         password = self.cleaned_data.get('password')
         
@@ -751,8 +776,18 @@ class AgentRegistrationForm(forms.ModelForm):
         required=False,
         widget=forms.TextInput(attrs={'class': 'form-control'})
     )
+    ACH_bank_name = forms.CharField(
+        max_length=100, 
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
     ACH_account_number = forms.CharField(
         max_length=50, 
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
+    ACH_routing_number = forms.CharField(
+        max_length=50,
         required=False,
         widget=forms.TextInput(attrs={'class': 'form-control'})
     )
@@ -812,6 +847,8 @@ class AgentRegistrationForm(forms.ModelForm):
         user.paypal_email = self.cleaned_data.get('paypal_email', '')
         user.bitcoin_wallet_address = self.cleaned_data.get('bitcoin_wallet_address', '')
         user.ACH_account_number = self.cleaned_data.get('ACH_account_number', '')
+        user.ACH_routing_number = self.cleaned_data.get('ACH_routing_number', '')
+        user.ACH_bank_name = self.cleaned_data.get('ACH_bank_name', '')
                 
         # Check if password was provided in form data
         password_from_form = self.cleaned_data.get('password')

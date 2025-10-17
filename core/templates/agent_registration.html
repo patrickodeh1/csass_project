@@ -106,11 +106,32 @@
                         </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
+                                <label for="{{ form.ACH_bank_name.id_for_label }}" class="form-label">ACH Bank Name</label>
+                                {{ form.ACH_bank_name }}
+                                {% if form.ACH_bank_name.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.ACH_bank_name.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
                                 <label for="{{ form.ACH_account_number.id_for_label }}" class="form-label">ACH Account Number</label>
                                 {{ form.ACH_account_number }}
                                 {% if form.ACH_account_number.errors %}
                                     <div class="invalid-feedback d-block">
                                         {% for error in form.ACH_account_number.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                         <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.ACH_account_number.id_for_label }}" class="form-label">ACH Routing Number</label>
+                                {{ form.ACH_routing_number }}
+                                {% if form.ACH_routing_number.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.ACH_routing_number.errors %}{{ error }}{% endfor %}
                                     </div>
                                 {% endif %}
                             </div>
