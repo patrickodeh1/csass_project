@@ -140,6 +140,86 @@
                     </tbody>
                 </table>
             </div>
+        <!-- Remote Agents Payment Details Table -->
+    <div class="mt-5">
+        <div class="row mb-4">
+            <div class="col">
+                <h3><i class="bi bi-credit-card"></i> Remote Agents Payment Details</h3>
+            </div>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>Employee ID</th>
+                                <th>PayPal Email</th>
+                                <th>Bitcoin Wallet</th>
+                                <th>ACH Account Number</th>
+                                <th>Status</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in agents %}
+                            <tr {% if not user.is_active %}class="text-muted"{% endif %}>
+                                <td>
+                                    <strong>{{ user.get_full_name }}</strong>
+                                </td>
+                                <td><code>{{ user.employee_id }}</code></td>
+                                <td>
+                                    {% if user.paypal_email %}
+                                    <span class="text-break">{{ user.paypal_email }}</span>
+                                    {% else %}
+                                    <span class="text-muted small">Not provided</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if user.bitcoin_wallet_address %}
+                                    <code class="text-break" style="font-size: 0.85rem;">{{ user.bitcoin_wallet_address }}</code>
+                                    {% else %}
+                                    <span class="text-muted small">Not provided</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if user.ACH_account_number %}
+                                    <code>{{ user.ACH_account_number }}</code>
+                                    {% else %}
+                                    <span class="text-muted small">Not provided</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if user.is_active %}
+                                    <span class="badge bg-success">Active</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Inactive</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{% url 'user_edit' user.id %}" class="btn btn-outline-primary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                                    <p class="mt-2">No remote agents found</p>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
         </div>
     </div>
 </div>

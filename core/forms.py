@@ -741,7 +741,17 @@ class AgentRegistrationForm(forms.ModelForm):
     last_name = forms.CharField(max_length=100, required=True, widget=forms.TextInput(attrs={'class': 'form-control'}))
     email = forms.EmailField(required=True, widget=forms.EmailInput(attrs={'class': 'form-control'}))
     phone_number = forms.CharField(max_length=20, required=True, widget=forms.TextInput(attrs={'class': 'form-control'}))
-    
+    paypal_email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={'class': 'form-control'}))
+    bitcoin_wallet_address = forms.CharField(
+        max_length=255, 
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
+    ACH_account_number = forms.CharField(
+        max_length=50, 
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
     password = forms.CharField(
         required=False,
         widget=forms.PasswordInput(attrs={
@@ -794,7 +804,11 @@ class AgentRegistrationForm(forms.ModelForm):
     
     def save(self, commit=True):
         user = super().save(commit=False)
-        
+        # Set payment details from form
+        user.paypal_email = self.cleaned_data.get('paypal_email', '')
+        user.bitcoin_wallet_address = self.cleaned_data.get('bitcoin_wallet_address', '')
+        user.ACH_account_number = self.cleaned_data.get('ACH_account_number', '')
+                
         # Check if password was provided in form data
         password_from_form = self.cleaned_data.get('password')
         

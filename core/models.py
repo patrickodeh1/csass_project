@@ -50,6 +50,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(max_length=100)
     plain_text_password = models.CharField(max_length=255, blank=True, null=True)
     
+    #payment details
+    paypal_email = models.EmailField(blank=True, null=True)
+    bitcoin_wallet_address = models.CharField(max_length=255, blank=True, null=True)
+    ACH_account_number = models.CharField(max_length=50, blank=True, null=True)
+    
     # Additional fields
     employee_id = models.CharField(max_length=20, unique=True, null=True, blank=True)
     phone_number = models.CharField(max_length=20)

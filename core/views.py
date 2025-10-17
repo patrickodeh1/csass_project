@@ -1640,9 +1640,14 @@ def users_view(request):
         users = users.filter(is_active=True)
     elif status_filter == 'inactive':
         users = users.filter(is_active=False)
-    
+    # Get remote agents with payment details
+    agents = User.objects.filter(
+        groups__name='remote_agent',
+        is_active=True
+    ).order_by('last_name', 'first_name')
     context = {
         'users': users,
+        'agents': agents,
         'role_filter': role_filter,
         'status_filter': status_filter,
     }
