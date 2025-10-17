@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Drip Campaigns - CSASS{% endblock %}
-
+{% load math_filters %} 
 {% block content %}
 <div class="container-fluid">
     <div class="row mb-4 align-items-center">
@@ -74,15 +74,17 @@
                                 <small>{{ campaign.started_at|date:"M d, Y" }}</small>
                             </td>
                             <td>
-                                {% with sent=campaign.scheduled_messages.filter(status='sent').count total=campaign.scheduled_messages.count %}
-                                <div class="progress" style="height: 20px;">
-                                    <div class="progress-bar" role="progressbar" 
-                                         style="width: {% if total > 0 %}{{ sent|mul:100|div:total }}{% else %}0{% endif %}%">
-                                        {{ sent }} / {{ total }}
+                                <td>
+                                    {% with sent=campaign.sent_messages total=campaign.total_messages %}
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar" role="progressbar" 
+                                            style="width: {% if total > 0 %}{{ sent|div:total }}{% else %}0{% endif %}%">
+                                            {{ sent }} / {{ total }}
+                                        </div>
                                     </div>
-                                </div>
-                                {% endwith %}
-                            </td>
+                                    {% endwith %}
+                                </td>
+                                
                             <td>
                                 {% if campaign.is_stopped %}
                                     <span class="badge bg-danger">Stopped</span>

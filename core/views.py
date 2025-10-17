@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, When, Value, CharField
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
 from django.utils import timezone
 from django.core.paginator import Paginator
@@ -12,6 +12,7 @@ from django.contrib.auth.views import (
     PasswordResetConfirmView, PasswordResetCompleteView
 )
 import csv
+from django.db.models import Count, Case, When, IntegerField
 from django.urls import reverse_lazy
 from .models import (Booking, Client, PayrollPeriod, PayrollAdjustment, 
                      SystemConfig, AvailableTimeSlot, AvailabilityCycle, AuditLog, User)
@@ -2158,7 +2159,18 @@ def drip_campaigns_view(request):
     """View all drip campaigns with filtering"""
     campaigns = DripCampaign.objects.all().select_related('booking__client', 'booking__salesman').order_by('-started_at')
     
-    # Filters
+    # Add annotations for total and sent counts
+    campaigns = campaigns.annotate(
+        total_messages=Count('scheduled_messages'),
+        sent_messages=Count(
+            Case(
+                When(scheduled_messages__status='sent', then=1),
+                output_field=IntegerField()
+            )
+        )
+    )
+    
+    # Filters (your existing code)
     campaign_type = request.GET.get('type')
     status = request.GET.get('status')
     
@@ -2186,7 +2198,6 @@ def drip_campaigns_view(request):
         'status': status,
     }
     return render(request, 'drip_campaigns.html', context)
-
 
 @login_required
 @admin_required
@@ -2242,7 +2253,16 @@ def communication_logs_view(request):
     if status:
         logs = logs.filter(status=status)
     
-    # Pagination
+    # Compute counts based on the filtered queryset (single SQL query)
+    totals = logs.aggregate(
+        total_in_view=Count('id'),
+        emails_count=Count(Case(When(communication_type='email', then=Value(1)), output_field=CharField())),
+        sms_count=Count(Case(When(communication_type='sms', then=Value(1)), output_field=CharField())),
+        failed_count=Count(Case(When(status='failed', then=Value(1)), output_field=CharField())),
+        # Add more if needed, e.g., success_count=Count(Case(When(status='sent', then=1)))
+    )
+    
+    # Pagination (on the filtered logs)
     paginator = Paginator(logs, 50)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
@@ -2251,5 +2271,9 @@ def communication_logs_view(request):
         'page_obj': page_obj,
         'comm_type': comm_type,
         'status': status,
+        'total_in_view': totals['total_in_view'],
+        'emails_count': totals['emails_count'],
+        'sms_count': totals['sms_count'],
+        'failed_count': totals['failed_count'],
     }
     return render(request, 'communication_logs.html', context)
