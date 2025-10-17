@@ -77,6 +77,32 @@
                             </div>
                         </div>
 
+                        <h5 class="border-bottom pb-2 mb-3 mt-4">Password (Optional)</h5>
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> Employee ID and temporary password will be automatically generated after registration if you leave password fields blank
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.password.id_for_label }}" class="form-label">Password</label>
+                                {{ form.password }}
+                                {% if form.password.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.password.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                                <small class="form-text text-muted">{{ form.password.help_text }}</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.password_confirm.id_for_label }}" class="form-label">Confirm Password</label>
+                                {{ form.password_confirm }}
+                                {% if form.password_confirm.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.password_confirm.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
                         <h5 class="border-bottom pb-2 mb-3 mt-4">Payment Details (Optional)</h5>
                         <div class="alert alert-info">
                             <i class="bi bi-info-circle"></i> Please provide your preferred payment method.
@@ -137,31 +163,6 @@
                             </div>
                         </div>
 
-                        <h5 class="border-bottom pb-2 mb-3 mt-4">Password (Optional)</h5>
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle"></i> Employee ID and temporary password will be automatically generated after registration if you leave password fields blank
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.password.id_for_label }}" class="form-label">Password</label>
-                                {{ form.password }}
-                                {% if form.password.errors %}
-                                    <div class="invalid-feedback d-block">
-                                        {% for error in form.password.errors %}{{ error }}{% endfor %}
-                                    </div>
-                                {% endif %}
-                                <small class="form-text text-muted">{{ form.password.help_text }}</small>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.password_confirm.id_for_label }}" class="form-label">Confirm Password</label>
-                                {{ form.password_confirm }}
-                                {% if form.password_confirm.errors %}
-                                    <div class="invalid-feedback d-block">
-                                        {% for error in form.password_confirm.errors %}{{ error }}{% endfor %}
-                                    </div>
-                                {% endif %}
-                            </div>
-                        </div>
 
                         <!-- Non-field errors -->
                         {% if form.non_field_errors %}
