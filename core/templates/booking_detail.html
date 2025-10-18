@@ -17,6 +17,7 @@
                     <div class="row mb-4">
                         <div class="col-md-6">
                             <h6 class="text-muted mb-3">Client Information</h6>
+                            <p class="mb-2"><strong>Business Name:</strong> {{ booking.client.business_name }}</p>
                             <p class="mb-2"><strong>Name:</strong> {{ booking.client.first_name }} {{ booking.client.last_name }}</p>
                             <p class="mb-2"><strong>Email:</strong> {{ booking.client.email }}</p>
                             <p class="mb-2"><strong>Phone:</strong> {{ booking.client.phone_number }}</p>
@@ -37,6 +38,14 @@
                                 <strong>Zoom Link:</strong> 
                                 <a href="{{ booking.zoom_link }}" target="_blank">{{ booking.zoom_link }}</a>
                             </p>
+                            {% endif %}
+
+                            {%if booking.meeting_address%}
+                            <p class="mb-2">
+                                <strong>Meeting Address:</strong> 
+                                {{ booking.meeting_address }}
+                            </p>
+
                             {% endif %}
                         </div>
                     </div>

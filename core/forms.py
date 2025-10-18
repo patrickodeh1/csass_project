@@ -341,12 +341,13 @@ class BookingForm(forms.ModelForm):
         fields = [
             'business_name', 'client_first_name', 'client_last_name',
             'client_email', 'client_phone', 'salesman', 'appointment_date',
-            'appointment_time', 'duration_minutes', 'appointment_type', 'zoom_link', 'notes', 'audio_file'
+            'appointment_time', 'duration_minutes', 'appointment_type', 'zoom_link', 'meeting_address', 'notes', 'audio_file'
         ]
         widgets = {
             'appointment_date': forms.DateInput(attrs={'type': 'date'}),
             'appointment_time': forms.TimeInput(attrs={'type': 'time'}),
             'duration_minutes': forms.NumberInput(attrs={'readonly': True, 'class': 'form-control'}),
+            'meeting_address': forms.Textarea(attrs={'row': 4}),
             'notes': forms.Textarea(attrs={'rows': 3}),
         }
     
@@ -505,7 +506,8 @@ class BookingForm(forms.ModelForm):
     
     def save(self, commit=True):
         booking = super().save(commit=False)
-        
+        booking.meeting_address = self.cleaned_data.get('meeting_address', '')
+
         # Get or create client
         client, created = Client.objects.get_or_create(
             email=self.cleaned_data['client_email'],
@@ -537,9 +539,10 @@ class BookingForm(forms.ModelForm):
             booking.duration_minutes = original.duration_minutes
             booking.appointment_type = original.appointment_type
             booking.zoom_link = original.zoom_link
+            booking.meeting_address = original.meeting_address
             # Restore client details from original client (prevent client mutation here)
             booking.client = original.client
-        
+           
         # Force duration to 15 minutes at save-time
         booking.duration_minutes = 15
 
@@ -556,19 +559,6 @@ class BookingForm(forms.ModelForm):
                 booking.status = 'confirmed'  # Admin/staff bookings auto-confirm
         else:
             booking.updated_by = self.request.user if self.request else booking.salesman
-        
-        # Persist meeting address into notes if in-person
-        try:
-            if self.cleaned_data.get('appointment_type') == 'in_person':
-                addr = (self.cleaned_data.get('meeting_address') or '').strip()
-                if addr:
-                    if booking.notes:
-                        if 'Meeting Address:' not in booking.notes:
-                            booking.notes = f"{booking.notes}\nMeeting Address: {addr}"
-                    else:
-                        booking.notes = f"Meeting Address: {addr}"
-        except Exception:
-            pass
 
         if commit:
             booking.save()
