@@ -331,8 +331,8 @@ class BookingForm(forms.ModelForm):
     client_last_name = forms.CharField(max_length=100, required=True)
     client_email = forms.EmailField(required=True)
     client_phone = forms.CharField(max_length=20, required=True)
-    zoom_link = forms.URLField(required=False, widget=forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'Zoom meeting link (if applicable)', 'readonly': True}))
-    
+    zoom_link = forms.URLField(required=False, widget=forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'Zoom meeting link (if applicable)'}))
+    location = forms.CharField(max_length=255, required=False, widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'State or City'}))
     audio_file = forms.FileField(required=False)
     meeting_address = forms.CharField(required=False, label='Meeting Address')
 
@@ -341,7 +341,7 @@ class BookingForm(forms.ModelForm):
         fields = [
             'business_name', 'client_first_name', 'client_last_name',
             'client_email', 'client_phone', 'salesman', 'appointment_date',
-            'appointment_time', 'duration_minutes', 'appointment_type', 'zoom_link', 'meeting_address', 'notes', 'audio_file'
+            'appointment_time', 'duration_minutes', 'appointment_type', 'location', 'zoom_link', 'meeting_address', 'notes', 'audio_file'
         ]
         widgets = {
             'appointment_date': forms.DateInput(attrs={'type': 'date'}),
@@ -365,14 +365,12 @@ class BookingForm(forms.ModelForm):
                 is_active_salesman=True,
                 is_active=True
             )
-
             self.fields['salesman'].widget.attrs['class'] = 'form-control'
         
         # Always force duration to 15 minutes in the UI
         if 'duration_minutes' in self.fields:
             self.fields['duration_minutes'].initial = 15
             self.fields['duration_minutes'].disabled = True
-
 
         # Pre-fill client info if editing
         if self.instance and self.instance.pk:
@@ -382,18 +380,30 @@ class BookingForm(forms.ModelForm):
             self.fields['client_last_name'].initial = self.instance.client.last_name
             self.fields['client_email'].initial = self.instance.client.email
             self.fields['client_phone'].initial = self.instance.client.phone_number
-
-            # Lock all fields except notes and audio if booking is pending
+            
+            
+            # Lock fields based on user role
+            is_admin = self.request and self.request.user.is_staff
+            is_remote_agent = self.request and self.request.user.groups.filter(name='remote_agent').exists()
+            
+            # If booking is pending
             if self.instance.status == 'pending':
                 lock_fields = [
                     'business_name', 'client_first_name', 'client_last_name', 'client_email', 'client_phone',
-                    'salesman', 'appointment_date', 'appointment_time', 'duration_minutes', 'appointment_type', 'zoom_link'
+                    'salesman', 'appointment_date', 'appointment_time', 'duration_minutes', 'appointment_type', 
+                    'location', 'zoom_link', 'meeting_address'
                 ]
-                for name in lock_fields:
-                    if name in self.fields:
-                        self.fields[name].disabled = True
-                        # Avoid required validation errors for disabled fields that won't post back
-                        self.fields[name].required = False
+                
+                # Admin can edit all fields - don't lock anything for admin
+                if is_admin:
+                    # Admin can edit everything - remove readonly
+                    pass
+                else:
+                    # Remote agents: lock all salesman-related fields
+                    for name in lock_fields:
+                        if name in self.fields:
+                            self.fields[name].disabled = True
+                            self.fields[name].required = False
         
         # Set zoom link from SystemConfig for zoom appointments
         if self.initial.get('appointment_type') == 'zoom':
@@ -407,6 +417,7 @@ class BookingForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         salesman = cleaned_data.get('salesman')
+        location = cleaned_data.get('location')
         appointment_date = cleaned_data.get('appointment_date')
         appointment_time = cleaned_data.get('appointment_time')
         appointment_type = cleaned_data.get('appointment_type')
@@ -418,10 +429,12 @@ class BookingForm(forms.ModelForm):
             self.add_error('zoom_link', 'A meeting link is required for Zoom appointments.')
         if appointment_type == 'in_person' and not meeting_address:
             self.add_error('meeting_address', 'A meeting address is required for in-person appointments.')
+        if appointment_type == 'in_person' and not location:
+            self.add_error('location', 'Location (State/City) is required for in-person appointments.')
             
         
         if all([salesman, appointment_date, appointment_time, appointment_type]):
-            # Determine if we should skip availability validation (edit without schedule change or admin editing)
+            # Determine if we should skip availability validation
             skip_availability_checks = False
             if self.instance and self.instance.pk:
                 original_same = (
@@ -438,19 +451,21 @@ class BookingForm(forms.ModelForm):
 
             if skip_availability_checks:
                 return cleaned_data
+                
             # Get available slots for this day and appointment type
             date = appointment_date
             available_slots = AvailableTimeSlot.objects.filter(
                 salesman=salesman,
+                location=location,
                 date=date,
-                appointment_type=appointment_type,  # Must match!
+                appointment_type=appointment_type,
                 is_active=True
             )
             
             if not available_slots.exists():
                 raise forms.ValidationError(
-                    f"{salesman.get_full_name()} has no available {appointment_type} slots on {appointment_date.strftime('%A')}s. "
-                    f"Please select a different salesman, day, or appointment type."
+                    f"{salesman.get_full_name()} has no available {appointment_type} slots on {appointment_date.strftime('%A')}s at location '{location}'. "
+                    f"Please select a different salesman, day, location, or appointment type."
                 )
             
             # Check if time falls within any available slot
@@ -464,11 +479,11 @@ class BookingForm(forms.ModelForm):
             
             if not time_is_valid:
                 available_times = ", ".join([
-                    f"{slot.start_time.strftime('%I:%M %p')}" #-{slot.end_time.strftime('%I:%M %p')}" 
+                    f"{slot.start_time.strftime('%I:%M %p')}"
                     for slot in available_slots
                 ])
                 raise forms.ValidationError(
-                    f"Selected time is not available for {appointment_type} appointments. "
+                    f"Selected time is not available for {appointment_type} appointments at location '{location}'. "
                     f"{salesman.get_full_name()}'s available times on {appointment_date.strftime('%A')}s: {available_times}"
                 )
             
@@ -530,8 +545,11 @@ class BookingForm(forms.ModelForm):
         
         booking.client = client
 
-        # If editing a pending booking, ignore changes to locked fields by restoring original values
-        if booking.pk and booking.status == 'pending':
+        # Admin can edit locked fields - don't restore original values
+        is_admin = self.request and self.request.user.is_staff
+        
+        # If editing a pending booking AND not admin, ignore changes to locked fields
+        if booking.pk and booking.status == 'pending' and not is_admin:
             original = Booking.objects.get(pk=booking.pk)
             booking.salesman = original.salesman
             booking.appointment_date = original.appointment_date
@@ -540,7 +558,6 @@ class BookingForm(forms.ModelForm):
             booking.appointment_type = original.appointment_type
             booking.zoom_link = original.zoom_link
             booking.meeting_address = original.meeting_address
-            # Restore client details from original client (prevent client mutation here)
             booking.client = original.client
            
         # Force duration to 15 minutes at save-time
@@ -554,9 +571,9 @@ class BookingForm(forms.ModelForm):
             booking.created_by = self.request.user if self.request else booking.salesman
             
             if self.request and self.request.user.groups.filter(name='remote_agent').exists():
-                booking.status = 'pending'  # Requires admin approval
+                booking.status = 'pending'
             else:
-                booking.status = 'confirmed'  # Admin/staff bookings auto-confirm
+                booking.status = 'confirmed'
         else:
             booking.updated_by = self.request.user if self.request else booking.salesman
 
@@ -564,7 +581,7 @@ class BookingForm(forms.ModelForm):
             booking.save()
         
         return booking
-
+    
 class AudioForm(BookingForm):
     class Meta(BookingForm.Meta):
         fields = ['audio_file']
@@ -644,6 +661,30 @@ class SystemConfigForm(forms.ModelForm):
         self.fields['reminder_lead_time_hours'].help_text = 'Hours before appointment to send reminder'
         self.fields['zoom_enabled'].help_text = 'Enable Zoom appointments. Disabling this will deactivate all active Zoom time slots.'
         self.fields['in_person_enabled'].help_text = 'Enable in-person appointments. Disabling this will deactivate all active in-person time slots.'
+
+class MessageTemplateCSVUploadForm(forms.Form):
+    """Form for uploading message templates via CSV"""
+    csv_file = forms.FileField(
+        label='CSV File',
+        help_text='Upload a CSV file with columns: message_type, email_subject, email_body, sms_body, is_active',
+        widget=forms.FileInput(attrs={
+            'class': 'form-control',
+            'accept': '.csv'
+        })
+    )
+    
+    def clean_csv_file(self):
+        csv_file = self.cleaned_data.get('csv_file')
+        if csv_file:
+            if not csv_file.name.endswith('.csv'):
+                raise forms.ValidationError('File must be a CSV file.')
+            
+            # Check file size (max 5MB)
+            if csv_file.size > 5 * 1024 * 1024:
+                raise forms.ValidationError('File size must be less than 5MB.')
+                
+        return csv_file
+
 
 class MessageTemplateForm(forms.ModelForm):
     class Meta:

@@ -136,10 +136,10 @@
                                         </span>
                                     </div>
                                     {% endfor %}
-                                    {% if day_info.appointments|length > 3 %}
-                                    <div class="text-muted small" style="font-size: 0.7rem; padding-left: 6px;">
-                                        <i class="bi bi-three-dots"></i> +{{ day_info.appointments|length|add:"-3" }} more
-                                    </div>
+                                    {% if day_info.available_slots|length > 3 %}
+                                        <div class="more-items-text" style="padding-left: 6px;">
+                                            <i class="bi bi-three-dots"></i> <strong>+{{ day_info.available_slots|length|add:"-3" }}</strong> more slots
+                                        </div>
                                     {% endif %}
 
                                     {% elif is_remote_agent %}
@@ -155,10 +155,10 @@
                                         </span>
                                     </div>
                                     {% endfor %}
-                                    {% if day_info.available_slots|length > 3 %}
-                                    <div class="text-muted small" style="font-size: 0.7rem; padding-left: 6px;">
-                                        <i class="bi bi-three-dots"></i> +{{ day_info.available_slots|length|add:"-3" }} more slots
-                                    </div>
+                                    {% if day_info.appointments|length > 3 %}
+                                        <div class="more-items-text" style="padding-left: 6px;">
+                                            <i class="bi bi-three-dots"></i> <strong>+{{ day_info.appointments|length|add:"-3" }}</strong> more
+                                        </div>
                                     {% endif %}
                                     {% else %}
                                     {% for booking in day_info.pending_bookings|slice:":1" %}
@@ -226,8 +226,8 @@
                                     
                                     {% with total_bookings=day_info.pending_bookings|length|add:day_info.confirmed_bookings|length|add:day_info.declined_bookings|length %}
                                     {% if total_bookings > 3 %}
-                                    <div class="text-muted small" style="font-size: 0.7rem; padding-left: 6px;">
-                                        <i class="bi bi-three-dots"></i> +{{ total_bookings|add:"-3" }} more bookings
+                                    <div class="more-items-text" style="padding-left: 6px;">
+                                        <i class="bi bi-three-dots"></i> <strong>+{{ total_bookings|add:"-3" }}</strong> more bookings
                                     </div>
                                     {% endif %}
                                     {% endwith %}
@@ -235,11 +235,10 @@
                                     {% endif %}
                                     
                                     <!-- View All Link -->
-                                    <div style="position: absolute; bottom: 5px; right: 5px;">
-                                        <small class="text-primary fw-bold" style="font-size: 0.65rem;">
-                                            <i class="bi bi-arrow-right-circle"></i> View All
-                                        </small>
+                                    <div class="view-all-link">
+                                        <i class="bi bi-arrow-right-circle"></i> <strong>View All</strong>
                                     </div>
+
                                 {% endif %}
                             </td>
                             {% endfor %}
@@ -279,7 +278,9 @@
                         </div>
                         {% endfor %}
                         {% if day_data.appointments|length > 4 %}
-                        <small class="text-muted d-block text-center">+{{ day_data.appointments|length|add:"-4" }} more</small>
+                            <div class="more-items-text text-center">
+                                <strong>+{{ day_data.appointments|length|add:"-4" }}</strong> more
+                            </div>
                         {% endif %}
                         {% elif is_remote_agent %}
                         {% for slot in day_data.available_slots|slice:":3" %}
@@ -295,7 +296,9 @@
                         </div>
                         {% endfor %}
                         {% if day_data.available_slots|length > 3 %}
-                        <small class="text-muted d-block text-center">+{{ day_data.available_slots|length|add:"-3" }} more slots</small>
+                        <div class="more-items-text text-center">
+                            <strong>+{{ day_data.available_slots|length|add:"-3" }}</strong> more slots
+                        </div>
                         {% endif %}
                         {% else %}
                         {% with all_bookings=day_data.pending_bookings|add:day_data.confirmed_bookings|add:day_data.declined_bookings %}

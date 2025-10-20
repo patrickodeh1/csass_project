@@ -1,47 +1,78 @@
 {% extends 'base.html' %}
-{% load auth_extras %}
-{% block title %}Pending Bookings - CSASS{% endblock %}
+
+{% block title %}Booking Approvals - CSASS{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
     <div class="row mb-4">
         <div class="col">
-            <h2><i class="bi bi-hourglass-split"></i> Booking Approvals</h2>
+            <h2><i class="bi bi-check-circle"></i> Booking Approvals</h2>
         </div>
     </div>
 
-    <!-- Status Filter -->
-    <div class="card mb-4">
-        <div class="card-body">
-            <div class="btn-group" role="group">
-                <a href="?status=pending" class="btn btn-{% if status_filter == 'pending' %}primary{% else %}outline-primary{% endif %}">
-                    Pending <span class="badge bg-danger">{{ pending_count }}</span>
-                </a>
-                <a href="?status=declined" class="btn btn-{% if status_filter == 'declined' %}primary{% else %}outline-primary{% endif %}">
-                    Declined <span class="badge bg-secondary">{{ declined_count }}</span>
-                </a>
-                <a href="?status=all" class="btn btn-{% if status_filter == 'all' %}primary{% else %}outline-primary{% endif %}">
-                    All
-                </a>
-            </div>
-        </div>
-    </div>
+    <!-- Status Tabs -->
+    <ul class="nav nav-tabs mb-4" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link {% if status_filter == 'pending' or not status_filter %}active{% endif %}" 
+               href="?status=pending">
+                <i class="bi bi-hourglass-split"></i> Pending 
+                <span class="badge bg-warning text-dark">{{ pending_count }}</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if status_filter == 'approved' %}active{% endif %}" 
+               href="?status=approved">
+                <i class="bi bi-check-circle"></i> Approved
+                <span class="badge bg-success">{{ approved_count }}</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if status_filter == 'declined' %}active{% endif %}" 
+               href="?status=declined">
+                <i class="bi bi-x-circle"></i> Declined 
+                <span class="badge bg-danger">{{ declined_count }}</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if status_filter == 'all' %}active{% endif %}" 
+               href="?status=all">
+                <i class="bi bi-list"></i> All
+            </a>
+        </li>
+    </ul>
 
-    <!-- Bookings List -->
-    <div class="card shadow">
-        <div class="card-body">
+    <div class="card shadow border-0">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">
+                {% if status_filter == 'pending' or not status_filter %}
+                    Pending Bookings
+                {% elif status_filter == 'approved' %}
+                    Approved Bookings
+                {% elif status_filter == 'declined' %}
+                    Declined Bookings
+                {% else %}
+                    All Bookings
+                {% endif %}
+                {% if is_salesman %}
+                <small class="ms-2">(Your Bookings Only)</small>
+                {% endif %}
+            </h5>
+        </div>
+        <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
                         <tr>
-                            <th>Created</th>
-                            <th>Submitted By</th>
-                            <th>Client</th>
+                            <th>Date</th>
+                            <th>Time</th>
+                            {% if not is_salesman %}
                             <th>Salesman</th>
-                            <th>Appointment</th>
+                            {% endif %}
+                            <th>Client</th>
+                            <th>Business</th>
                             <th>Type</th>
                             <th>Status</th>
-                            <th>Commission</th>
+                            <th>Submitted By</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -49,134 +80,121 @@
                         {% for booking in page_obj %}
                         <tr>
                             <td>
-                                <small>{{ booking.created_at|date:"M d, Y" }}<br>
-                                {{ booking.created_at|date:"g:i A" }}</small>
+                                <span class="badge bg-secondary">{{ booking.appointment_date|date:"D, M d" }}</span>
                             </td>
-                            <td>
-                                {{ booking.created_by.get_full_name }}
-                                {% if booking.created_by|has_group:'remote_agent' %}
-                                <span class="badge bg-info text-dark">Remote Agent</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <strong>{{ booking.client.get_full_name }}</strong><br>
-                                <small class="text-muted">{{ booking.client.email }}</small>
-                            </td>
+                            <td><strong>{{ booking.appointment_time|time:"g:i A" }}</strong></td>
+                            {% if not is_salesman %}
                             <td>{{ booking.salesman.get_full_name }}</td>
-                            <td>
-                                <strong>{{ booking.appointment_date|date:"M d, Y" }}</strong><br>
-                                <small>{{ booking.appointment_time|date:"g:i A" }} ({{ booking.duration_minutes }} min)</small>
-                            </td>
+                            {% endif %}
+                            <td>{{ booking.client.get_full_name }}</td>
+                            <td>{{ booking.client.business_name }}</td>
                             <td>
                                 <span class="badge bg-{% if booking.appointment_type == 'zoom' %}info{% else %}primary{% endif %}">
-                                    {% if booking.appointment_type == 'zoom' %}<i class="bi bi-camera-video"></i> ZOOM{% else %}<i class="bi bi-geo-alt"></i> IN-PERSON{% endif %}
+                                    {% if booking.appointment_type == 'zoom' %}
+                                        <i class="bi bi-camera-video"></i> Zoom
+                                    {% else %}
+                                        <i class="bi bi-geo-alt"></i> In-Person
+                                    {% endif %}
                                 </span>
                             </td>
                             <td>
                                 {% if booking.status == 'pending' %}
-                                <span class="badge bg-warning text-dark">
-                                    <i class="bi bi-hourglass-split"></i> Pending
-                                </span>
+                                    <span class="badge bg-warning text-dark">
+                                        <i class="bi bi-hourglass-split"></i> Pending
+                                    </span>
                                 {% elif booking.status == 'confirmed' %}
-                                <span class="badge bg-success">
-                                    <i class="bi bi-check-circle"></i> Approved
-                                </span>
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-check-circle"></i> Approved
+                                    </span>
                                 {% elif booking.status == 'declined' %}
-                                <span class="badge bg-danger">
-                                    <i class="bi bi-x-circle"></i> Declined
-                                </span>
+                                    <span class="badge bg-danger">
+                                        <i class="bi bi-x-circle"></i> Declined
+                                    </span>
                                 {% endif %}
                             </td>
                             <td>
-                                {% if booking.status == 'confirmed' %}
-                                <strong class="text-success">${{ booking.commission_amount }}</strong>
-                                {% else %}
-                                <span class="text-muted">${{ booking.commission_amount }}</span>
-                                {% endif %}
+                                {{ booking.created_by.get_full_name }}
+                                <br>
+                                <small class="text-muted">{{ booking.created_at|date:"M d, g:i A" }}</small>
                             </td>
                             <td class="text-end">
                                 <div class="btn-group btn-group-sm">
-                                    <a href="{% url 'booking_detail' booking.id %}" class="btn btn-outline-info" title="View Details">
+                                    <a href="{% url 'booking_detail' booking.id %}" class="btn btn-outline-primary">
                                         <i class="bi bi-eye"></i>
                                     </a>
                                     {% if booking.status == 'pending' %}
-                                        {% if is_salesman %}
-                                            {% if booking.salesman == user %}
-                                                <a href="{% url 'booking_approve' booking.id %}" class="btn btn-outline-success" title="Approve">
-                                                    <i class="bi bi-check-lg"></i>
-                                                </a>
-                                                <a href="{% url 'booking_decline' booking.id %}" class="btn btn-outline-danger" title="Decline">
-                                                    <i class="bi bi-x-lg"></i>
-                                                </a>
-                                            {% endif %}
-                                        {% else %}
-                                            <a href="{% url 'booking_approve' booking.id %}" class="btn btn-outline-success" title="Approve">
-                                                <i class="bi bi-check-lg"></i>
-                                            </a>
-                                            <a href="{% url 'booking_decline' booking.id %}" class="btn btn-outline-danger" title="Decline">
-                                                <i class="bi bi-x-lg"></i>
-                                            </a>
-                                        {% endif %}
+                                    {% if is_salesman %}
+                                    <a href="{% url 'salesman_booking_approve' booking.id %}" class="btn btn-success">
+                                        <i class="bi bi-check"></i>
+                                    </a>
+                                    <a href="{% url 'salesman_booking_decline' booking.id %}" class="btn btn-danger">
+                                        <i class="bi bi-x"></i>
+                                    </a>
+                                    {% else %}
+                                    <a href="{% url 'booking_approve' booking.id %}" class="btn btn-success">
+                                        <i class="bi bi-check"></i>
+                                    </a>
+                                    <a href="{% url 'booking_decline' booking.id %}" class="btn btn-danger">
+                                        <i class="bi bi-x"></i>
+                                    </a>
+                                    {% endif %}
                                     {% endif %}
                                 </div>
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="9" class="text-center text-muted py-5">
-                                <i class="bi bi-inbox" style="font-size: 3rem;"></i>
-                                <p class="mt-3">No bookings found</p>
+                            <td colspan="{% if is_salesman %}8{% else %}9{% endif %}" class="text-center text-muted py-5">
+                                <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                                <p class="mt-3">
+                                    {% if status_filter == 'pending' or not status_filter %}
+                                        No pending bookings
+                                    {% elif status_filter == 'approved' %}
+                                        No approved bookings
+                                    {% elif status_filter == 'declined' %}
+                                        No declined bookings
+                                    {% else %}
+                                        No bookings found
+                                    {% endif %}
+                                </p>
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-
-            <!-- Pagination -->
-            {% if page_obj.has_other_pages %}
-            <nav aria-label="Bookings pagination">
-                <ul class="pagination justify-content-center">
+        </div>
+        
+        <!-- Pagination -->
+        {% if page_obj.has_other_pages %}
+        <div class="card-footer bg-light">
+            <nav aria-label="Pagination">
+                <ul class="pagination justify-content-center mb-0">
                     {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1&status={{ status_filter }}">First</a>
+                    </li>
                     <li class="page-item">
                         <a class="page-link" href="?page={{ page_obj.previous_page_number }}&status={{ status_filter }}">Previous</a>
                     </li>
                     {% endif %}
                     
-                    {% for num in page_obj.paginator.page_range %}
-                    <li class="page-item {% if page_obj.number == num %}active{% endif %}">
-                        <a class="page-link" href="?page={{ num }}&status={{ status_filter }}">{{ num }}</a>
+                    <li class="page-item active">
+                        <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
                     </li>
-                    {% endfor %}
                     
                     {% if page_obj.has_next %}
                     <li class="page-item">
                         <a class="page-link" href="?page={{ page_obj.next_page_number }}&status={{ status_filter }}">Next</a>
                     </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&status={{ status_filter }}">Last</a>
+                    </li>
                     {% endif %}
                 </ul>
             </nav>
-            {% endif %}
         </div>
+        {% endif %}
     </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-// Auto-refresh pending count every 30 seconds
-setInterval(function() {
-    fetch('/pending-count/')
-        .then(response => response.json())
-        .then(data => {
-            const badge = document.getElementById('pending-count');
-            if (badge && data.count > 0) {
-                badge.textContent = data.count;
-                badge.style.display = 'inline';
-            } else if (badge) {
-                badge.style.display = 'none';
-            }
-        });
-}, 30000);
-</script>
 {% endblock %}

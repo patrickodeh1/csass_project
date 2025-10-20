@@ -1,9 +1,13 @@
 from django.db.models.signals import post_save, post_delete
 from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import receiver
+from django.db import transaction
 from .models import User, Booking, PayrollPeriod, AvailableTimeSlot, AuditLog, Client, PayrollAdjustment, AvailabilityCycle
 from .utils import generate_timeslots_for_cycle
+from .tasks import generate_timeslots_async
 from django.utils import timezone
+import logging
+import threading
 import json
 
 def get_client_ip(request):
@@ -73,22 +77,59 @@ def log_user_changes(sender, instance, created, **kwargs):
 def auto_generate_timeslots_for_salesman(sender, instance, created, **kwargs):
     """
     Automatically generate timeslots for a new salesman or when a user becomes an active salesman.
+    Uses async Celery task to avoid blocking the HTTP response.
     """
+    logger = logging.getLogger(__name__)
+    
     # Only proceed if the user is an active salesman
     if instance.is_active_salesman:
-        # Check if it's a new salesman or if is_active_salesman just changed to True
-        if created or (not instance._original_is_active_salesman and instance.is_active_salesman):
-            # Ensure an AvailabilityCycle exists and then generate timeslots for this salesman
+        logger.info(f"User {instance.id} ({instance.get_full_name()}) is an active salesman. Created: {created}")
+        
+        # For new users, always generate slots if they're active salesmen
+        # For existing users, check if is_active_salesman was just enabled
+        should_generate = created
+        
+        if not created:
+            # Check if is_active_salesman was just changed to True
+            try:
+                original_value = getattr(instance, '_original_is_active_salesman', False)
+                should_generate = not original_value and instance.is_active_salesman
+                logger.info(f"Existing user {instance.id}: original={original_value}, current={instance.is_active_salesman}, should_generate={should_generate}")
+            except AttributeError:
+                # Fallback: if we can't determine the original state, generate slots
+                should_generate = True
+                logger.info(f"Could not determine original state for user {instance.id}, generating slots")
+        
+        if should_generate:
+            logger.info(f"Generating slots for salesman {instance.id} ({instance.get_full_name()})")
+            
+            # Ensure an AvailabilityCycle exists
             AvailabilityCycle.get_current_cycle() # This will create a cycle if none exists
             
-            # Generate timeslots for this specific salesman
-            # We need to call generate_timeslots_for_cycle with the specific salesman
-            # However, generate_timeslots_for_cycle currently generates for ALL active salesmen.
-            # I need to modify generate_timeslots_for_cycle to accept a specific salesman,
-            # or create a new utility function for a single salesman.
-            # For now, I will call the existing function, but this is a point of improvement.
-            # I will modify generate_timeslots_for_cycle to accept a salesman argument.
-            generate_timeslots_for_cycle(salesman=instance)
+            # Schedule async slot generation after the transaction commits
+            # This ensures the user is fully saved before generating slots
+            def schedule_slot_generation():
+                try:
+                    generate_timeslots_async.delay(instance.id)
+                    logger.info(f"Scheduled async slot generation for user {instance.id}")
+                except Exception as e:
+                    # Fallback: if Celery/broker is unavailable, do it in a background thread
+                    logger.warning(f"Celery unavailable for slot generation (user {instance.id}): {e}. Falling back to local thread.")
+                    def _local_generate():
+                        try:
+                            # Ensure user still exists and is active salesman
+                            user = User.objects.filter(id=instance.id, is_active_salesman=True).first()
+                            if not user:
+                                logger.warning(f"User {instance.id} not found or not active salesman in fallback")
+                                return
+                            AvailabilityCycle.get_current_cycle()
+                            generate_timeslots_for_cycle(salesman=user)
+                            logger.info(f"Successfully generated slots for user {instance.id} via fallback")
+                        except Exception:
+                            logger.exception("Local slot generation fallback failed")
+                    threading.Thread(target=_local_generate, daemon=True).start()
+            
+            transaction.on_commit(schedule_slot_generation)
 
 @receiver(post_save, sender=Client)
 def log_client_changes(sender, instance, created, **kwargs):

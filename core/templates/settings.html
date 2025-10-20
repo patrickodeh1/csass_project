@@ -134,6 +134,57 @@
 
         <!-- Message Templates Tab -->
         <div class="tab-pane fade" id="templates" role="tabpanel">
+            <!-- CSV Upload Section -->
+            <div class="card shadow mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0 text-white fw-semibold fs-4">
+                        <i class="bi bi-upload"></i> Bulk Upload Templates
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <form method="post" enctype="multipart/form-data">
+                                {% csrf_token %}
+                                <input type="hidden" name="csv_upload" value="1">
+                                
+                                <div class="mb-3">
+                                    <label for="{{ csv_form.csv_file.id_for_label }}" class="form-label fw-bold">
+                                        Upload CSV File
+                                    </label>
+                                    {{ csv_form.csv_file }}
+                                    <div class="form-text">
+                                        <strong>CSV Format:</strong> message_type, email_subject, email_body, sms_body, is_active<br>
+                                        <strong>Valid message types:</strong> booking_approved_agent, booking_approved_client, booking_approved_salesman, booking_reminder_client, booking_reminder_salesman, ad_day_1, ad_day_7, ad_day_14, ad_day_21, dna_day_1, dna_day_7, dna_day_30, dna_day_60, dna_day_90<br>
+                                        <strong>Variables:</strong> {client_name}, {salesman_name}, {business_name}, {appointment_date}, {appointment_time}, {company_name}
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-info">
+                                    <i class="bi bi-upload"></i> Upload CSV
+                                </button>
+                                <a href="/static/sample_message_templates.csv" class="btn btn-outline-info ms-2" download>
+                                    <i class="bi bi-download"></i> Download Sample CSV
+                                </a>
+                            </form>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="alert alert-light">
+                                <h6><i class="bi bi-info-circle"></i> CSV Upload Tips:</h6>
+                                <ul class="mb-0 small">
+                                    <li>First row should contain column headers</li>
+                                    <li>Use double quotes for text with commas</li>
+                                    <li>is_active can be: true, false, 1, 0, yes, no</li>
+                                    <li>Existing templates will be updated</li>
+                                    <li>New templates will be created</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Templates List -->
             <div class="card shadow">
                 <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 text-white fw-semibold fs-4">

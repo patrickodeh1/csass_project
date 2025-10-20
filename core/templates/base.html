@@ -11,6 +11,43 @@
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+
+    <style>
+        /* Larger "View All" button */
+        .view-all-link {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            font-size: 0.9rem !important; /* Increased from 0.65rem */
+            font-weight: 700 !important;
+            padding: 4px 8px;
+            background: rgba(13, 110, 253, 0.1);
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .view-all-link:hover {
+            background: rgba(13, 110, 253, 0.2);
+            transform: scale(1.05);
+        }
+
+        /* Larger "+X more slots/bookings" text */
+        .more-items-text {
+            font-size: 0.85rem !important; /* Increased from 0.7rem */
+            font-weight: 600 !important;
+            color: #495057 !important;
+            padding: 4px 6px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 3px;
+            display: inline-block;
+            margin-top: 4px;
+        }
+
+        .more-items-text:hover {
+            background: rgba(0, 0, 0, 0.1);
+        }
+        </style>
+
     <style>
         :root {
             --bs-primary: #2C5234;
@@ -96,35 +133,38 @@
                     {% endif %}
 
                     {% if user.is_staff %}
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle text-white" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-gear"></i> Admin
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{% url 'payroll' %}">
-                                <i class="bi bi-cash-stack"></i> Payroll Processing
-                            </a></li>
-                            <li><a class="dropdown-item" href="{% url 'users' %}">
-                                <i class="bi bi-people"></i> Users
-                            </a></li>
-                            <li><a class="dropdown-item" href="{% url 'settings' %}">
-                                <i class="bi bi-sliders"></i> System Settings
-                            </a></li>
-                            <li><a class="dropdown-item" href="{% url 'audit_log' %}">
-                                <i class="bi bi-journal-text"></i> Audit Log
-                            </a></li>
-                            <li><a class="dropdown-item" href="{% url 'drip_campaigns' %}">
-                                <i class="bi bi-inbox"></i> Drip Campaigns
-                            </a></li>
-                            <li><a class="dropdown-item" href="{% url 'communication_logs' %}">
-                                <i class="bi bi-chat-dots"></i> Communication Logs
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'logout' %}">
-                                <i class="bi bi-box-arrow-right"></i> Logout
-                            </a></li>
-                        </ul>
-                    </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle text-white" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-gear"></i> Admin
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{% url 'payroll' %}">
+                                    <i class="bi bi-cash-stack"></i> Payroll Processing
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'users' %}">
+                                    <i class="bi bi-people"></i> Users
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'clients' %}">
+                                    <i class="bi bi-building"></i> Clients
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'settings' %}">
+                                    <i class="bi bi-sliders"></i> System Settings
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'audit_log' %}">
+                                    <i class="bi bi-journal-text"></i> Audit Log
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'drip_campaigns' %}">
+                                    <i class="bi bi-inbox"></i> Drip Campaigns
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'communication_logs' %}">
+                                    <i class="bi bi-chat-dots"></i> Communication Logs
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{% url 'logout' %}">
+                                    <i class="bi bi-box-arrow-right"></i> Logout
+                                </a></li>
+                            </ul>
+                        </li>
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">

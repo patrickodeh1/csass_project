@@ -40,14 +40,13 @@ urlpatterns = [
     path('salesman/bookings/<int:pk>/approve/', views.salesman_booking_approve, name='salesman_booking_approve'),
     path('salesman/bookings/<int:pk>/decline/', views.salesman_booking_decline, name='salesman_booking_decline'),
     
-    
     # Commissions
     path('commissions/', views.commissions_view, name='commissions'),
     
     path('pending-count/', views.pending_bookings_count_api, name='pending_count_api'),
     path('salesman-pending-count/', views.salesman_pending_bookings_count_api, name='salesman_pending_count_api'),
 
- # Time Slots (Admin)
+    # Time Slots (Admin)
     path('admiin/timeslots/', views.timeslots_view, name='timeslots'),
     path('admiin/timeslots/new/', views.timeslot_create, name='timeslot_create'),
     path('admiin/timeslots/<int:pk>/edit/', views.timeslot_edit, name='timeslot_edit'),
@@ -64,6 +63,12 @@ urlpatterns = [
     path('admiin/users/new/', views.user_create, name='user_create'),
     path('admiin/users/<int:pk>/edit/', views.user_edit, name='user_edit'),
     path('admiin/users/<int:pk>/deactivate/', views.user_deactivate, name='user_deactivate'),
+    path('admiin/users/<int:pk>/reactivate/', views.user_reactivate, name='user_reactivate'),
+    path('admiin/users/<int:pk>/delete/', views.user_delete, name='user_delete'),
+    
+    # Clients (admiin)
+    path('admiin/clients/', views.clients_view, name='clients'),
+    path('admiin/clients/<int:pk>/', views.client_detail, name='client_detail'),
     
     # Settings (admiin)
     path('admiin/settings/', views.settings_view, name='settings'),
@@ -84,5 +89,4 @@ urlpatterns = [
     
     # Communication logs
     path('communication-logs/', views.communication_logs_view, name='communication_logs'),
-
 ]

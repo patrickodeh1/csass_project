@@ -166,7 +166,7 @@ class Client(models.Model):
     phone_number = models.CharField(max_length=20)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='clients_created')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='clients_created')
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
@@ -217,6 +217,8 @@ class Booking(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     meeting_address = models.CharField(max_length=255, blank=True)
     zoom_link = models.URLField(blank=True)
+    location = models.CharField(max_length=255, blank=True, help_text="State or City of salesman for in-person appointments")
+
     notes = models.TextField(blank=True)
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2)
     audio_file = models.FileField(
@@ -369,7 +371,7 @@ class PayrollPeriod(models.Model):
     end_date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     finalized_at = models.DateTimeField(null=True, blank=True)
-    finalized_by = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name='payrolls_finalized')
+    finalized_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='payrolls_finalized')
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
@@ -406,14 +408,14 @@ class PayrollAdjustment(models.Model):
         ('cancellation_after_finalized', 'Cancellation After Finalized'),
     ]
     
-    payroll_period = models.ForeignKey(PayrollPeriod, on_delete=models.PROTECT, related_name='adjustments')
-    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='payroll_adjustments')
+    payroll_period = models.ForeignKey(PayrollPeriod, on_delete=models.PROTECT, null=True, blank=True, related_name='adjustments')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='payroll_adjustments')
     booking = models.ForeignKey(Booking, on_delete=models.PROTECT, null=True, blank=True, related_name='adjustments')
     adjustment_type = models.CharField(max_length=50, choices=ADJUSTMENT_TYPES)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     reason = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='adjustments_created')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='adjustments_created')
     
     class Meta:
         indexes = [
@@ -443,20 +445,32 @@ class SystemConfig(models.Model):
     max_advance_booking_days = models.IntegerField(default=90)
     min_advance_booking_hours = models.IntegerField(default=2)
     updated_at = models.DateTimeField(auto_now=True)
-    updated_by = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     
     @classmethod
     def get_config(cls):
-        """Get or create the singleton config"""
-        config, created = cls.objects.get_or_create(id=1)
-        return config
+        """Get or create the singleton config without leaking DoesNotExist."""
+        # Try fast path
+        config = cls.objects.filter(id=1).first()
+        if config:
+            return config
+        # Create deterministically with id=1
+        obj = cls(id=1)
+        try:
+            obj.save()
+        except Exception:
+            # In case of race condition, fetch again
+            existing = cls.objects.filter(id=1).first()
+            if existing:
+                return existing
+            raise
+        return obj
     
     def save(self, *args, **kwargs):
-    
         self.id = 1
         
-        # Store the original state to check for changes
-        if self.pk:
+        # For updates only (skip on initial create to avoid DoesNotExist)
+        if not self._state.adding and self.pk and SystemConfig.objects.filter(pk=self.pk).exists():
             original = SystemConfig.objects.get(pk=self.pk)
             today = timezone.now().date()
             
@@ -510,7 +524,7 @@ class AuditLog(models.Model):
         ('adjust', 'Adjust'),
     ]
     
-    user = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     action = models.CharField(max_length=20, choices=ACTION_CHOICES)
     entity_type = models.CharField(max_length=50)
     entity_id = models.IntegerField()
@@ -551,27 +565,13 @@ class AvailabilityCycle(models.Model):
 
     @classmethod
     def get_current_cycle(cls):
-        """Return active cycle or create one covering the next 14 days, auto-generating slots."""
+        """Return active cycle or create one covering the next 14 days."""
         today = timezone.now().date()
         active = cls.objects.filter(start_date__lte=today, end_date__gte=today, is_active=True).first()
         if not active:
             start_date = today
             end_date = today + timedelta(days=13)
             active = cls.objects.create(start_date=start_date, end_date=end_date)
-            # Auto-generate default weekday timeslots for this new cycle
-            try:
-                from .utils import generate_timeslots_for_cycle
-                generate_timeslots_for_cycle()
-            except Exception:
-                pass
-        else:
-            # If an active cycle exists but has no slots, generate them now
-            if not active.slots.exists():
-                try:
-                    from .utils import generate_timeslots_for_cycle
-                    generate_timeslots_for_cycle()
-                except Exception:
-                    pass
         return active
 
 

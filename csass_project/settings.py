@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'crispy_forms',
     'crispy_bootstrap5',
+    'django_celery_beat',
     'core',
 ]
 
@@ -62,10 +63,15 @@ WSGI_APPLICATION = 'csass_project.wsgi.application'
 # === DATABASE (SQLite for Local Development) ===
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'csass_db',
+        'USER': 'csass_user',
+        'PASSWORD': 'admin123',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
+
 
 # CUSTOM USER MODEL
 AUTH_USER_MODEL = 'core.User'
@@ -124,3 +130,40 @@ EMAIL_TIMEOUT = 5
 
 # DEFAULT AUTO FIELD
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# CELERY CONFIGURATION
+CELERY_BROKER_URL = 'amqp://guest:guest@localhost:5672//'
+CELERY_RESULT_BACKEND = None  # Disable results or use RPC if needed
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# LOGGING CONFIGURATION
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'core.signals': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'core.utils': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'core.tasks': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

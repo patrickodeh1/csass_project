@@ -54,18 +54,29 @@ def generate_timeslots_for_cycle(salesman=None):
     - From 9:00 AM to 7:00 PM (30-minute intervals)
     - For both appointment types: zoom and in_person
     If a 'salesman' object is provided, slots are generated only for that salesman.
+    Uses bulk_create for performance optimization.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     cycle = AvailabilityCycle.get_current_cycle()
+    logger.info(f"Using cycle: {cycle.start_date} to {cycle.end_date}")
 
     start_date, end_date = cycle.start_date, cycle.end_date
     
     if salesman:
         salesmen = [salesman]
+        logger.info(f"Generating slots for specific salesman: {salesman.get_full_name()} (ID: {salesman.id})")
     else:
         salesmen = User.objects.filter(is_active_salesman=True, is_active=True)
+        logger.info(f"Generating slots for {salesmen.count()} active salesmen")
 
+    total_slots_created = 0
     for s_man in salesmen: # Renamed to s_man to avoid conflict with the parameter
+        # Pre-calculate all slots for this salesman
+        slots_to_create = []
         current_date = start_date
+        
         while current_date <= end_date:
             # Weekday check: 0=Mon ... 6=Sun -> only Mon-Fri
             if current_date.weekday() < 5:
@@ -75,18 +86,31 @@ def generate_timeslots_for_cycle(salesman=None):
 
                 while current_dt.time() < end:
                     for appt_type in ['zoom', 'in_person']:
-                        # unique_together ensures we won't duplicate existing slots
-                        AvailableTimeSlot.objects.get_or_create(
-                            salesman=s_man,
-                            date=current_date,
-                            start_time=current_dt.time(),
-                            appointment_type=appt_type,
-                            defaults={'cycle': cycle, 'created_by': s_man}
+                        slots_to_create.append(
+                            AvailableTimeSlot(
+                                cycle=cycle,
+                                salesman=s_man,
+                                date=current_date,
+                                start_time=current_dt.time(),
+                                appointment_type=appt_type,
+                                created_by=s_man
+                            )
                         )
                     current_dt += timedelta(minutes=30)
             # Next day
             current_date += timedelta(days=1)
+        
+        # Bulk create all slots for this salesman (PostgreSQL ON CONFLICT DO NOTHING)
+        if slots_to_create:
+            created_slots = AvailableTimeSlot.objects.bulk_create(
+                slots_to_create, 
+                ignore_conflicts=True
+            )
+            slots_count = len(created_slots) if created_slots else len(slots_to_create)
+            total_slots_created += slots_count
+            logger.info(f"Created {slots_count} slots for {s_man.get_full_name()}")
 
+    logger.info(f"Total slots created: {total_slots_created}")
     return cycle
 
 
@@ -94,27 +118,41 @@ def ensure_timeslots_for_payroll_period(start_date, end_date, created_by=None):
     """
     Ensure timeslots exist for each active salesman within the given payroll period.
     Mon–Fri, 9:00–19:00, 30min intervals, both zoom and in_person.
-    Idempotent via get_or_create.
+    Uses bulk_create for performance optimization.
     """
     salesmen = User.objects.filter(is_active_salesman=True, is_active=True)
+    
     for salesman in salesmen:
+        # Pre-calculate all slots for this salesman
+        slots_to_create = []
         current_date = start_date
+        
         while current_date <= end_date:
             if current_date.weekday() < 5:  # Mon-Fri
                 start = time(9, 0)
                 end = time(19, 0)
                 current_dt = datetime.combine(current_date, start)
+                
                 while current_dt.time() < end:
                     for appt_type in ['zoom', 'in_person']:
-                        AvailableTimeSlot.objects.get_or_create(
-                            salesman=salesman,
-                            date=current_date,
-                            start_time=current_dt.time(),
-                            appointment_type=appt_type,
-                            defaults={'created_by': (created_by or salesman)}
+                        slots_to_create.append(
+                            AvailableTimeSlot(
+                                salesman=salesman,
+                                date=current_date,
+                                start_time=current_dt.time(),
+                                appointment_type=appt_type,
+                                created_by=(created_by or salesman)
+                            )
                         )
                     current_dt += timedelta(minutes=30)
             current_date += timedelta(days=1)
+        
+        # Bulk create all slots for this salesman (PostgreSQL ON CONFLICT DO NOTHING)
+        if slots_to_create:
+            AvailableTimeSlot.objects.bulk_create(
+                slots_to_create, 
+                ignore_conflicts=True
+            )
 
 
 def cleanup_old_slots(weeks=2):

@@ -41,9 +41,11 @@ import logging
 from datetime import datetime, date, time, timedelta 
 from .models import MessageTemplate, DripCampaign, ScheduledMessage, CommunicationLog
 from .decorators import admin_required
-from .forms import MessageTemplateForm
+from .forms import MessageTemplateForm, MessageTemplateCSVUploadForm
 from .utils import start_drip_campaign
 import os
+from django.db import IntegrityError
+
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -499,31 +501,22 @@ def booking_create(request):
     slot_salesman_id = request.GET.get('salesman')
     slot_date_str = request.GET.get('date')
     start_time_str = request.GET.get('start_time')
-    #end_time_str = request.GET.get('end_time')
     slot_type = request.GET.get('type')
     
-    # --- Time and Duration Calculation (Existing Logic) ---
+    # --- Time and Duration Calculation ---
     if slot_date_str:
         initial['appointment_date'] = slot_date_str
 
     if start_time_str:
         try:
-            # Convert time strings to datetime objects
             t1 = datetime.strptime(start_time_str, '%H:%M')
-            
-            # Pass a proper time object to the form
             initial['appointment_time'] = t1.time()
-
-            # All appointments are 15 minutes duration
             initial['duration_minutes'] = 15
-
         except (ValueError, TypeError):
-            # Fallback to default duration if calculation fails
             initial['duration_minutes'] = 15
             if request.method == 'GET':
                  messages.error(request, "Could not determine appointment duration from the selected slot. Please check the duration.")
     else:
-        # Fallback if no time range is provided
         initial['duration_minutes'] = 15
 
     if slot_salesman_id:
@@ -541,7 +534,6 @@ def booking_create(request):
             pass
     
     if request.method == 'POST':
-        # Pass initial data to POST form so template can access it on validation errors
         form = BookingForm(request.POST, request.FILES, initial=initial, request=request)
         if form.is_valid():
             
@@ -574,7 +566,7 @@ def booking_create(request):
                     messages.error(request, "The selected time slot is no longer active or available.")
                     return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
             
-            # 3. Save the Booking object (commit=False)
+            # 3. Save the Booking object
             booking = form.save(commit=False)
             
             # 4. Link the slot
@@ -583,21 +575,18 @@ def booking_create(request):
             
             # Set system fields and final save
             booking.created_by = request.user
-            booking.save() # The custom save method handles deactivating the slot for pending/confirmed
+            booking.save()
             
-            # 4. --- Handle Notifications (Existing Logic) ---
+            # 5. Handle Notifications
             is_remote_agent = request.user.groups.filter(name='remote_agent').exists()
             
             if is_remote_agent:
-                # Remote agent - needs approval (status remains 'pending')
                 messages.warning(
                     request, 
                     f'Booking submitted successfully! Status: Pending Admin Approval. '
                     f'You will receive an email once the booking is reviewed.'
                 )
             else:
-                # Admin/Staff - auto-confirmed (status is set to 'confirmed' by default or form)
-                # Slot is deactivated by Booking.save() because status='confirmed'
                 try:
                     send_booking_confirmation(booking)
                     messages.success(
@@ -613,6 +602,7 @@ def booking_create(request):
         form = BookingForm(initial=initial, request=request)
     
     return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
+
 @login_required
 def booking_detail(request, pk):
     booking = get_object_or_404(Booking, pk=pk)
@@ -622,7 +612,61 @@ def booking_detail(request, pk):
         if booking.salesman != request.user and booking.created_by != request.user:
             return HttpResponseForbidden("You don't have permission to view this booking.")
     
-    return render(request, 'booking_detail.html', {'booking': booking})
+    # Handle POST requests
+    if request.method == 'POST':
+        # Audio upload (Admin only)
+        if 'upload_audio' in request.POST and request.user.is_staff:
+            audio_file = request.FILES.get('audio_file')
+            if audio_file:
+                # Validate audio file
+                if audio_file.content_type.startswith('audio/'):
+                    booking.audio_file = audio_file
+                    booking.save()
+                    messages.success(request, 'Audio file uploaded successfully!')
+                else:
+                    messages.error(request, 'Invalid file type. Please upload an audio file.')
+            else:
+                messages.error(request, 'No audio file selected.')
+            return redirect('booking_detail', pk=pk)
+        
+        # Status change: Pending → Confirmed (Admin only)
+        if 'change_to_confirmed' in request.POST and request.user.is_staff:
+            if booking.status == 'pending':
+                booking.status = 'confirmed'
+                booking.approved_at = timezone.now()
+                booking.approved_by = request.user
+                booking.save()
+                
+                # Send confirmation emails
+                try:
+                    send_booking_confirmation(booking)
+                    send_booking_approved_notification(booking)
+                    messages.success(request, f'Booking confirmed! Confirmation emails sent.')
+                except Exception as e:
+                    messages.warning(request, f'Booking confirmed but notifications failed: {str(e)}')
+            else:
+                messages.error(request, 'Only pending bookings can be confirmed.')
+            return redirect('booking_detail', pk=pk)
+        
+        # Status change: Confirmed → Pending (Admin only)
+        if 'change_to_pending' in request.POST and request.user.is_staff:
+            if booking.status == 'confirmed':
+                booking.status = 'pending'
+                booking.approved_at = None
+                booking.approved_by = None
+                booking.save()
+                messages.success(request, 'Booking status changed to Pending.')
+            else:
+                messages.error(request, 'Only confirmed bookings can be changed to pending.')
+            return redirect('booking_detail', pk=pk)
+    
+    # Pass today's date for template comparison
+    context = {
+        'booking': booking,
+        'today': timezone.now().date()
+    }
+    
+    return render(request, 'booking_detail.html', context)
 
 @login_required
 def booking_edit(request, pk):
@@ -650,7 +694,7 @@ def booking_edit(request, pk):
 
 @login_required
 def pending_bookings_view(request):
-    """View to see pending bookings - Admin sees all, Salesman sees only theirs"""
+    """View to see pending/approved/declined bookings - Admin sees all, Salesman sees only theirs"""
     status_filter = request.GET.get('status', 'pending')
     
     # Determine user role
@@ -672,6 +716,8 @@ def pending_bookings_view(request):
     # Apply status filter
     if status_filter == 'pending':
         bookings = bookings.filter(status='pending')
+    elif status_filter == 'approved':
+        bookings = bookings.filter(status='confirmed')
     elif status_filter == 'declined':
         bookings = bookings.filter(status='declined')
     elif status_filter == 'all':
@@ -687,15 +733,18 @@ def pending_bookings_view(request):
     # Get counts based on user role
     if is_salesman and not is_admin:
         pending_count = Booking.objects.filter(status='pending', salesman=request.user).count()
+        approved_count = Booking.objects.filter(status='confirmed', salesman=request.user).count()
         declined_count = Booking.objects.filter(status='declined', salesman=request.user).count()
     else:
         pending_count = Booking.objects.filter(status='pending').count()
+        approved_count = Booking.objects.filter(status='confirmed').count()
         declined_count = Booking.objects.filter(status='declined').count()
     
     context = {
         'page_obj': page_obj,
         'status_filter': status_filter,
         'pending_count': pending_count,
+        'approved_count': approved_count,
         'declined_count': declined_count,
         'is_salesman': is_salesman and not is_admin,
         'is_admin': is_admin,
@@ -1736,18 +1785,7 @@ def user_edit(request, pk):
     
     return render(request, 'user_form.html', {'form': form, 'title': 'Edit User', 'user': user})
 
-@login_required
-@admin_required
-def user_deactivate(request, pk):
-    user = get_object_or_404(User, pk=pk)
-    
-    if request.method == 'POST':
-        user.is_active = False
-        user.save()
-        messages.success(request, f'User {user.get_full_name()} deactivated successfully!')
-        return redirect('users')
-    
-    return render(request, 'user_deactivate.html', {'user': user})
+
 
 # ============================================================
 # System Settings Views (Admin Only)
@@ -1766,9 +1804,81 @@ def settings_view(request):
     
     # Handle POST request FIRST
     if request.method == 'POST':
+        # Check if it's a CSV upload
+        if 'csv_upload' in request.POST:
+            csv_form = MessageTemplateCSVUploadForm(request.POST, request.FILES)
+            if csv_form.is_valid():
+                try:
+                    csv_file = csv_form.cleaned_data['csv_file']
+                    import csv
+                    import io
+                    
+                    # Read CSV content
+                    csv_content = csv_file.read().decode('utf-8')
+                    csv_reader = csv.DictReader(io.StringIO(csv_content))
+                    
+                    created_count = 0
+                    updated_count = 0
+                    error_count = 0
+                    
+                    for row in csv_reader:
+                        try:
+                            # Validate required fields
+                            if not all(key in row for key in ['message_type', 'email_subject', 'email_body', 'sms_body']):
+                                error_count += 1
+                                continue
+                            
+                            # Parse is_active (default to True if not specified)
+                            is_active = row.get('is_active', 'true').lower() in ('true', '1', 'yes')
+                            
+                            # Create or update template
+                            template, created = MessageTemplate.objects.get_or_create(
+                                message_type=row['message_type'],
+                                defaults={
+                                    'email_subject': row['email_subject'],
+                                    'email_body': row['email_body'],
+                                    'sms_body': row['sms_body'],
+                                    'is_active': is_active
+                                }
+                            )
+                            
+                            if not created:
+                                # Update existing template
+                                template.email_subject = row['email_subject']
+                                template.email_body = row['email_body']
+                                template.sms_body = row['sms_body']
+                                template.is_active = is_active
+                                template.save()
+                                updated_count += 1
+                            else:
+                                created_count += 1
+                                
+                        except Exception as e:
+                            logger.error(f"Error processing CSV row: {str(e)}")
+                            error_count += 1
+                    
+                    if error_count == 0:
+                        messages.success(
+                            request, 
+                            f'CSV uploaded successfully! Created {created_count} templates, updated {updated_count} templates.'
+                        )
+                    else:
+                        messages.warning(
+                            request, 
+                            f'CSV uploaded with {error_count} errors. Created {created_count} templates, updated {updated_count} templates.'
+                        )
+                    
+                    return redirect('settings')
+                    
+                except Exception as e:
+                    logger.error(f"Error processing CSV upload: {str(e)}")
+                    messages.error(request, f'Error processing CSV file: {str(e)}')
+            else:
+                messages.error(request, 'Invalid CSV file. Please check the format.')
+        
         # Check if it's a general settings save (or just any POST to this form)
         # Since button name might not be included, check for form fields instead
-        if 'company_name' in request.POST or 'save_general' in request.POST:
+        elif 'company_name' in request.POST or 'save_general' in request.POST:
             form = SystemConfigForm(request.POST, instance=config)
             if form.is_valid():
                 config = form.save(commit=False)
@@ -1786,8 +1896,12 @@ def settings_view(request):
         # GET request - initialize fresh form
         form = SystemConfigForm(instance=config)
     
+    # Initialize CSV upload form
+    csv_form = MessageTemplateCSVUploadForm()
+    
     context = {
         'form': form,
+        'csv_form': csv_form,
         'config': config,
         'message_templates': message_templates,
         'email_configured': email_configured,
@@ -1854,7 +1968,7 @@ def audit_log_view(request):
 # ============================================================
 @login_required
 def timeslots_view(request):
-    """Main availability dashboard view using 2-week cycles with automatic generation and pagination."""
+    """Main availability dashboard view with mass delete functionality"""
     is_admin = request.user.is_staff
 
     # Auto-inactivate past and elapsed slots
@@ -1863,6 +1977,30 @@ def timeslots_view(request):
         mark_elapsed_today_slots_inactive()
     except Exception:
         pass
+
+    # Handle bulk delete (POST request)
+    if request.method == 'POST' and is_admin:
+        bulk_action = request.POST.get('bulk_action')
+        if bulk_action == 'delete':
+            slot_ids = request.POST.getlist('slot_ids')
+            if slot_ids:
+                deleted_count = AvailableTimeSlot.objects.filter(id__in=slot_ids).delete()[0]
+                messages.success(request, f'Successfully deleted {deleted_count} time slot(s).')
+            else:
+                messages.warning(request, 'No slots selected for deletion.')
+            return redirect('timeslots')
+        
+        # Handle other POST actions (cleanup, delete cycle)
+        if 'cleanup_slots' in request.POST:
+            count = cleanup_old_slots()
+            messages.info(request, f'Marked {count} old unbooked slots as inactive.')
+            return redirect('timeslots')
+        elif 'delete_cycle' in request.POST:
+            cycle = AvailabilityCycle.objects.filter(id=request.GET.get('cycle')).first()
+            if cycle:
+                cycle.delete()
+                messages.success(request, 'Current 2-week cycle deleted. A new cycle will be created automatically.')
+            return redirect('timeslots')
 
     # Ensure there's an active cycle
     selected_cycle_id = request.GET.get('cycle')
@@ -1890,20 +2028,8 @@ def timeslots_view(request):
     # Order with active slots first
     slots = slots.select_related('salesman', 'created_by').order_by('-is_active', 'date', 'start_time', 'salesman')
 
-    # Handle admin actions
-    if request.method == 'POST' and is_admin:
-        if 'cleanup_slots' in request.POST:
-            count = cleanup_old_slots()
-            messages.info(request, f'Marked {count} old unbooked slots as inactive.')
-            return redirect('timeslots')
-        elif 'delete_cycle' in request.POST:
-            if cycle:
-                cycle.delete()
-                messages.success(request, 'Current 2-week cycle deleted. A new cycle will be created automatically.')
-            return redirect('timeslots')
-
-    # PAGINATION - Show 50 slots per page
-    paginator = Paginator(slots, 50)
+    # PAGINATION - Show 57 slots per page (as requested)
+    paginator = Paginator(slots, 57)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
@@ -1912,7 +2038,7 @@ def timeslots_view(request):
         salesmen = User.objects.filter(is_active_salesman=True, is_active=True).order_by('first_name', 'last_name')
 
     context = {
-        'page_obj': page_obj,  # Use page_obj instead of timeslots
+        'page_obj': page_obj,
         'cycles': cycles,
         'selected_cycle': cycle,
         'selected_day': selected_day,
@@ -1922,7 +2048,6 @@ def timeslots_view(request):
         'is_admin': is_admin,
     }
     return render(request, 'timeslots.html', context)
-
 
 # ============================================================
 # NEW: Day Detail View for Calendar
@@ -2353,3 +2478,495 @@ def agent_registration(request):
         'form': form,
         'title': 'Register as Remote Agent'
     })
+
+
+@login_required
+@admin_required
+def user_deactivate(request, pk):
+    """Deactivate user with proper handling of related records"""
+    user = get_object_or_404(User, pk=pk)
+    
+    # Prevent deactivating yourself
+    if user == request.user:
+        messages.error(request, "You cannot deactivate your own account.")
+        return redirect('users')
+    
+    # Check what will be affected
+    bookings_as_salesman = Booking.objects.filter(salesman=user).count()
+    timeslots = AvailableTimeSlot.objects.filter(salesman=user).count()
+    active_bookings = Booking.objects.filter(
+        salesman=user,
+        status__in=['pending', 'confirmed']
+    ).count()
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        
+        if action == 'deactivate_only':
+            """Deactivate user without reassigning - deactivate slots and bookings"""
+            try:
+                with transaction.atomic():
+                    # Deactivate all timeslots
+                    deactivated_slots = AvailableTimeSlot.objects.filter(salesman=user).update(is_active=False)
+                    
+                    # Cancel all pending/confirmed bookings
+                    canceled_bookings = Booking.objects.filter(
+                        salesman=user,
+                        status__in=['pending', 'confirmed']
+                    ).update(status='canceled', canceled_by=request.user)
+                    
+                    # Deactivate the user
+                    user.is_active = False
+                    user.is_active_salesman = False
+                    user.save()
+                    
+                    messages.success(
+                        request,
+                        f'✓ User "{user.get_full_name()}" deactivated successfully. '
+                        f'Deactivated {deactivated_slots} time slot(s) and canceled {canceled_bookings} booking(s).'
+                    )
+            except Exception as e:
+                logger.error(f"Error deactivating user {user.pk}: {str(e)}")
+                messages.error(request, f'Error deactivating user. Please try again.')
+                return render(request, 'user_deactivate.html', {
+                    'user': user,
+                    'bookings_as_salesman': bookings_as_salesman,
+                    'timeslots': timeslots,
+                    'active_bookings': active_bookings,
+                })
+            
+            return redirect('users')
+        
+        elif action == 'reassign_and_deactivate':
+            """Reassign bookings and timeslots before deactivating"""
+            new_salesman_id = request.POST.get('new_salesman')
+            if not new_salesman_id:
+                messages.error(request, 'Please select a salesman to reassign to.')
+                return render(request, 'user_deactivate.html', {
+                    'user': user,
+                    'bookings_as_salesman': bookings_as_salesman,
+                    'timeslots': timeslots,
+                    'active_bookings': active_bookings,
+                })
+            
+            new_salesman = get_object_or_404(User, pk=new_salesman_id)
+            
+            try:
+                with transaction.atomic():
+                    # Reassign all bookings where this user is the salesman
+                    reassigned_bookings = Booking.objects.filter(salesman=user).update(
+                        salesman=new_salesman
+                    )
+                    
+                    # Reassign timeslots - handle duplicates by deleting conflicting slots first
+                    user_slots = AvailableTimeSlot.objects.filter(salesman=user)
+                    reassigned_timeslots = 0
+                    
+                    for slot in user_slots:
+                        # Check if target salesman already has a slot at this time
+                        existing_slot = AvailableTimeSlot.objects.filter(
+                            salesman=new_salesman,
+                            date=slot.date,
+                            start_time=slot.start_time,
+                            appointment_type=slot.appointment_type
+                        ).first()
+                        
+                        if existing_slot:
+                            # If target salesman already has this slot, just delete the user's slot
+                            slot.delete()
+                        else:
+                            # Reassign the slot to new salesman
+                            slot.salesman = new_salesman
+                            slot.created_by = new_salesman  # Update created_by to avoid PROTECT constraint
+                            slot.save()
+                            reassigned_timeslots += 1
+                    
+                    # Reassign payroll adjustments
+                    PayrollAdjustment.objects.filter(user=user).update(user=new_salesman)
+                    
+                    # Reassign created_by references in various models
+                    Client.objects.filter(created_by=user).update(created_by=new_salesman)
+                    Booking.objects.filter(created_by=user).update(created_by=new_salesman)
+                    PayrollAdjustment.objects.filter(created_by=user).update(created_by=new_salesman)
+                    
+                    # Deactivate the user
+                    user.is_active = False
+                    user.is_active_salesman = False
+                    user.save()
+                    
+                    messages.success(
+                        request,
+                        f'✓ User "{user.get_full_name()}" deactivated. '
+                        f'Reassigned {reassigned_bookings} booking(s) and {reassigned_timeslots} timeslot(s) to {new_salesman.get_full_name()}.'
+                    )
+            except Exception as e:
+                logger.error(f"Error deactivating user {user.pk}: {str(e)}")
+                messages.error(request, f'Error deactivating user. Please try again.')
+                return render(request, 'user_deactivate.html', {
+                    'user': user,
+                    'bookings_as_salesman': bookings_as_salesman,
+                    'timeslots': timeslots,
+                    'active_bookings': active_bookings,
+                })
+            
+            return redirect('users')
+    
+    # GET request - show confirmation page
+    replacement_salesmen = User.objects.filter(
+        is_active_salesman=True,
+        is_active=True
+    ).exclude(pk=user.pk).order_by('first_name', 'last_name')
+    
+    context = {
+        'user': user,
+        'bookings_as_salesman': bookings_as_salesman,
+        'timeslots': timeslots,
+        'active_bookings': active_bookings,
+        'has_active_bookings': active_bookings > 0,
+        'replacement_salesmen': replacement_salesmen,
+    }
+    
+    return render(request, 'user_deactivate.html', context)
+
+
+@login_required
+@admin_required
+def user_reactivate(request, pk):
+    """Reactivate a deactivated user"""
+    user = get_object_or_404(User, pk=pk)
+    
+    if user.is_active:
+        messages.warning(request, f'User "{user.get_full_name()}" is already active.')
+        return redirect('users')
+    
+    if request.method == 'POST':
+        try:
+            with transaction.atomic():
+                # Reactivate the user
+                user.is_active = True
+                
+                # If user was a salesman before, reactivate them as salesman
+                if user.groups.filter(name='salesman').exists():
+                    user.is_active_salesman = True
+                
+                user.save()
+                
+                # Check if user has slots, if not generate them
+                if user.is_active_salesman:
+                    existing_slots = AvailableTimeSlot.objects.filter(salesman=user).count()
+                    if existing_slots == 0:
+                        # Generate slots for this salesman
+                        from .tasks import generate_timeslots_async
+                        try:
+                            generate_timeslots_async.delay(user.id)
+                            messages.success(
+                                request,
+                                f'✓ User "{user.get_full_name()}" reactivated successfully. '
+                                f'Slot generation scheduled in background.'
+                            )
+                        except Exception as e:
+                            # Fallback to local generation
+                            from .utils import generate_timeslots_for_cycle
+                            generate_timeslots_for_cycle(salesman=user)
+                            messages.success(
+                                request,
+                                f'✓ User "{user.get_full_name()}" reactivated successfully. '
+                                f'Slots generated locally.'
+                            )
+                    else:
+                        messages.success(
+                            request,
+                            f'✓ User "{user.get_full_name()}" reactivated successfully. '
+                            f'User has {existing_slots} existing slots.'
+                        )
+                else:
+                    messages.success(
+                        request,
+                        f'✓ User "{user.get_full_name()}" reactivated successfully.'
+                    )
+                    
+        except Exception as e:
+            logger.error(f"Error reactivating user {user.pk}: {str(e)}")
+            messages.error(request, f'Error reactivating user. Please try again.')
+        
+        return redirect('users')
+    
+    context = {
+        'user': user,
+    }
+    
+    return render(request, 'user_reactivate.html', context)
+
+
+@login_required
+@admin_required
+def user_delete(request, pk):
+    user = get_object_or_404(User, pk=pk)
+    
+    # Prevent deleting yourself
+    if user == request.user:
+        messages.error(request, "You cannot delete your own account.")
+        return redirect('users')
+    
+    # Check what will be affected
+    bookings_as_salesman = Booking.objects.filter(salesman=user).count()
+    bookings_as_creator = Booking.objects.filter(created_by=user).count()
+    timeslots = AvailableTimeSlot.objects.filter(salesman=user).count()
+    audit_logs = AuditLog.objects.filter(user=user).count()
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        
+        if action == 'delete_only':
+            """Delete user without reassigning - only works if no active bookings"""
+            # Check for active bookings (can't delete if any exist)
+            active_bookings = Booking.objects.filter(
+                salesman=user,
+                status__in=['pending', 'confirmed']
+            ).count()
+            
+            if active_bookings > 0:
+                messages.error(
+                    request,
+                    f'Cannot delete: User has {active_bookings} active booking(s). '
+                    f'Please reassign or cancel them first.'
+                )
+                return render(request, 'user_delete.html', {
+                    'user': user,
+                    'bookings_as_salesman': bookings_as_salesman,
+                    'bookings_as_creator': bookings_as_creator,
+                    'timeslots': timeslots,
+                    'audit_logs': audit_logs,
+                    'has_active_bookings': True,
+                })
+            
+            try:
+                with transaction.atomic():
+                    # Deactivate all timeslots
+                    AvailableTimeSlot.objects.filter(salesman=user).update(is_active=False)
+                    
+                    # Cancel all pending/confirmed bookings
+                    canceled_bookings = Booking.objects.filter(
+                        salesman=user,
+                        status__in=['pending', 'confirmed']
+                    ).update(status='canceled', canceled_by=request.user)
+                    
+                    # Update created_by references to avoid PROTECT constraint
+                    AvailableTimeSlot.objects.filter(created_by=user).update(created_by=request.user)
+                    Client.objects.filter(created_by=user).update(created_by=request.user)
+                    Booking.objects.filter(created_by=user).update(created_by=request.user)
+                    PayrollAdjustment.objects.filter(created_by=user).update(created_by=request.user)
+                    
+                    # Orphan audit logs (set user=None)
+                    AuditLog.objects.filter(user=user).update(user=None)
+                    
+                    user_name = user.get_full_name()
+                    user.delete()
+                    
+                    messages.success(
+                        request,
+                        f'✓ User "{user_name}" deleted successfully.'
+                    )
+            except IntegrityError as e:
+                # Catch any remaining foreign key constraint issues
+                logger.error(f"IntegrityError deleting user {user.pk}: {str(e)}")
+                messages.error(
+                    request,
+                    f'Cannot delete user: User is referenced by other records. Please reassign first.'
+                )
+                return render(request, 'user_delete.html', {
+                    'user': user,
+                    'bookings_as_salesman': bookings_as_salesman,
+                    'bookings_as_creator': bookings_as_creator,
+                    'timeslots': timeslots,
+                    'audit_logs': audit_logs,
+                })
+            except Exception as e:
+                logger.error(f"Unexpected error deleting user {user.pk}: {str(e)}")
+                messages.error(request, f'Error deleting user. Please try again.')
+                return render(request, 'user_delete.html', {
+                    'user': user,
+                    'bookings_as_salesman': bookings_as_salesman,
+                    'bookings_as_creator': bookings_as_creator,
+                    'timeslots': timeslots,
+                    'audit_logs': audit_logs,
+                })
+            
+            return redirect('users')
+        
+        elif action == 'reassign_and_delete':
+            """Reassign bookings and timeslots before deleting"""
+            new_salesman_id = request.POST.get('new_salesman')
+            if not new_salesman_id:
+                messages.error(request, 'Please select a salesman to reassign to.')
+                return render(request, 'user_delete.html', {
+                    'user': user,
+                    'bookings_as_salesman': bookings_as_salesman,
+                    'bookings_as_creator': bookings_as_creator,
+                    'timeslots': timeslots,
+                    'audit_logs': audit_logs,
+                })
+            
+            new_salesman = get_object_or_404(User, pk=new_salesman_id)
+            
+            try:
+                with transaction.atomic():
+                    # Reassign all bookings where this user is the salesman
+                    reassigned_bookings = Booking.objects.filter(salesman=user).update(
+                        salesman=new_salesman
+                    )
+                    
+                    # Reassign timeslots - handle duplicates by deleting conflicting slots first
+                    user_slots = AvailableTimeSlot.objects.filter(salesman=user)
+                    reassigned_timeslots = 0
+                    
+                    for slot in user_slots:
+                        # Check if target salesman already has a slot at this time
+                        existing_slot = AvailableTimeSlot.objects.filter(
+                            salesman=new_salesman,
+                            date=slot.date,
+                            start_time=slot.start_time,
+                            appointment_type=slot.appointment_type
+                        ).first()
+                        
+                        if existing_slot:
+                            # If target salesman already has this slot, just delete the user's slot
+                            slot.delete()
+                        else:
+                            # Reassign the slot to new salesman
+                            slot.salesman = new_salesman
+                            slot.created_by = new_salesman  # Update created_by to avoid PROTECT constraint
+                            slot.save()
+                            reassigned_timeslots += 1
+                    
+                    # Reassign audit logs (set user to new salesman for continuity)
+                    AuditLog.objects.filter(user=user).update(user=new_salesman)
+                    
+                    # Reassign payroll adjustments
+                    PayrollAdjustment.objects.filter(user=user).update(user=new_salesman)
+                    
+                    # Reassign created_by references in various models
+                    Client.objects.filter(created_by=user).update(created_by=new_salesman)
+                    Booking.objects.filter(created_by=user).update(created_by=new_salesman)
+                    PayrollAdjustment.objects.filter(created_by=user).update(created_by=new_salesman)
+                    
+                    user_name = user.get_full_name()
+                    user.delete()
+                    
+                    messages.success(
+                        request,
+                        f'✓ User "{user_name}" deleted. Reassigned {reassigned_bookings} booking(s) and {reassigned_timeslots} timeslot(s) to {new_salesman.get_full_name()}.'
+                    )
+            except IntegrityError as e:
+                logger.error(f"IntegrityError deleting user {user.pk}: {str(e)}")
+                messages.error(
+                    request,
+                    f'Cannot delete user: User is referenced by other records. Please try reassigning.'
+                )
+                return render(request, 'user_delete.html', {
+                    'user': user,
+                    'bookings_as_salesman': bookings_as_salesman,
+                    'bookings_as_creator': bookings_as_creator,
+                    'timeslots': timeslots,
+                    'audit_logs': audit_logs,
+                })
+            except Exception as e:
+                logger.error(f"Unexpected error deleting user {user.pk}: {str(e)}")
+                messages.error(request, f'Error deleting user. Please try again.')
+                return render(request, 'user_delete.html', {
+                    'user': user,
+                    'bookings_as_salesman': bookings_as_salesman,
+                    'bookings_as_creator': bookings_as_creator,
+                    'timeslots': timeslots,
+                    'audit_logs': audit_logs,
+                })
+            
+            return redirect('users')
+    
+    # GET request - show confirmation page
+    active_bookings = Booking.objects.filter(
+        salesman=user,
+        status__in=['pending', 'confirmed']
+    ).count()
+    
+    replacement_salesmen = User.objects.filter(
+        is_active_salesman=True,
+        is_active=True
+    ).exclude(pk=user.pk).order_by('first_name', 'last_name')
+    
+    context = {
+        'user': user,
+        'bookings_as_salesman': bookings_as_salesman,
+        'bookings_as_creator': bookings_as_creator,
+        'timeslots': timeslots,
+        'audit_logs': audit_logs,
+        'active_bookings': active_bookings,
+        'has_active_bookings': active_bookings > 0,
+        'replacement_salesmen': replacement_salesmen,
+    }
+    
+    return render(request, 'user_delete.html', context)
+
+@login_required
+@admin_required
+def clients_view(request):
+    """View all clients with their details"""
+    search_query = request.GET.get('search', '').strip()
+    
+    clients = Client.objects.all().annotate(
+        total_bookings=Count('bookings'),
+        confirmed_bookings=Count('bookings', filter=Q(bookings__status__in=['confirmed', 'completed']))
+    ).order_by('-created_at')
+    
+    # Search functionality
+    if search_query:
+        clients = clients.filter(
+            Q(business_name__icontains=search_query) |
+            Q(first_name__icontains=search_query) |
+            Q(last_name__icontains=search_query) |
+            Q(email__icontains=search_query) |
+            Q(phone_number__icontains=search_query)
+        )
+    
+    # Pagination
+    paginator = Paginator(clients, 50)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'page_obj': page_obj,
+        'search_query': search_query,
+    }
+    
+    return render(request, 'clients.html', context)
+
+
+@login_required
+@admin_required
+def client_detail(request, pk):
+    """View detailed client information and booking history"""
+    client = get_object_or_404(Client, pk=pk)
+    
+    # Get all bookings for this client
+    bookings = client.bookings.all().select_related('salesman', 'created_by').order_by('-appointment_date', '-appointment_time')
+    
+    # Get booking statistics
+    total_bookings = bookings.count()
+    confirmed_bookings = bookings.filter(status__in=['confirmed', 'completed']).count()
+    pending_bookings = bookings.filter(status='pending').count()
+    canceled_bookings = bookings.filter(status='canceled').count()
+    
+    # Get drip campaigns
+    campaigns = DripCampaign.objects.filter(booking__client=client).select_related('booking').order_by('-started_at')
+    
+    context = {
+        'client': client,
+        'bookings': bookings,
+        'total_bookings': total_bookings,
+        'confirmed_bookings': confirmed_bookings,
+        'pending_bookings': pending_bookings,
+        'canceled_bookings': canceled_bookings,
+        'campaigns': campaigns,
+    }
+    
+    return render(request, 'client_detail.html', context)

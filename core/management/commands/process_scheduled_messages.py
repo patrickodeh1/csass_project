@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from your_app.models import ScheduledMessage
-from your_app.utils import process_scheduled_messages
+from core.models import ScheduledMessage
+from core.utils import process_scheduled_messages
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,8 +69,8 @@ class Command(BaseCommand):
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import timedelta
-from your_app.models import Booking, SystemConfig
-from your_app.utils import send_booking_reminder
+from core.models import Booking, SystemConfig
+from core.utils import send_booking_reminder
 import logging
 
 logger = logging.getLogger(__name__)
