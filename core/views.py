@@ -18,7 +18,7 @@ from django.db.models import Count, Case, When, IntegerField
 from django.urls import reverse_lazy
 from .models import (Booking, Client, PayrollPeriod, PayrollAdjustment, 
                      SystemConfig, AvailableTimeSlot, AvailabilityCycle, AuditLog, User)
-from .forms import (LoginForm, BookingForm, CancelBookingForm, AudioForm,
+from .forms import (LoginForm, BookingForm, CancelBookingForm,
                     PayrollAdjustmentForm, AvailableTimeSlotForm, UserForm, SystemConfigForm, AgentRegistrationForm, CustomPasswordResetForm, CustomSetPasswordForm, CustomPasswordChangeForm)
 from .decorators import group_required, admin_required, remote_agent_required
 from .utils import (
@@ -603,70 +603,6 @@ def booking_create(request):
     
     return render(request, 'booking_form.html', {'form': form, 'title': 'New Booking'})
 
-@login_required
-def booking_detail(request, pk):
-    booking = get_object_or_404(Booking, pk=pk)
-    
-    # Check if user can view this booking
-    if not request.user.is_staff:
-        if booking.salesman != request.user and booking.created_by != request.user:
-            return HttpResponseForbidden("You don't have permission to view this booking.")
-    
-    # Handle POST requests
-    if request.method == 'POST':
-        # Audio upload (Admin only)
-        if 'upload_audio' in request.POST and request.user.is_staff:
-            audio_file = request.FILES.get('audio_file')
-            if audio_file:
-                # Validate audio file
-                if audio_file.content_type.startswith('audio/'):
-                    booking.audio_file = audio_file
-                    booking.save()
-                    messages.success(request, 'Audio file uploaded successfully!')
-                else:
-                    messages.error(request, 'Invalid file type. Please upload an audio file.')
-            else:
-                messages.error(request, 'No audio file selected.')
-            return redirect('booking_detail', pk=pk)
-        
-        # Status change: Pending → Confirmed (Admin only)
-        if 'change_to_confirmed' in request.POST and request.user.is_staff:
-            if booking.status == 'pending':
-                booking.status = 'confirmed'
-                booking.approved_at = timezone.now()
-                booking.approved_by = request.user
-                booking.save()
-                
-                # Send confirmation emails
-                try:
-                    send_booking_confirmation(booking)
-                    send_booking_approved_notification(booking)
-                    messages.success(request, f'Booking confirmed! Confirmation emails sent.')
-                except Exception as e:
-                    messages.warning(request, f'Booking confirmed but notifications failed: {str(e)}')
-            else:
-                messages.error(request, 'Only pending bookings can be confirmed.')
-            return redirect('booking_detail', pk=pk)
-        
-        # Status change: Confirmed → Pending (Admin only)
-        if 'change_to_pending' in request.POST and request.user.is_staff:
-            if booking.status == 'confirmed':
-                booking.status = 'pending'
-                booking.approved_at = None
-                booking.approved_by = None
-                booking.save()
-                messages.success(request, 'Booking status changed to Pending.')
-            else:
-                messages.error(request, 'Only confirmed bookings can be changed to pending.')
-            return redirect('booking_detail', pk=pk)
-    
-    # Pass today's date for template comparison
-    context = {
-        'booking': booking,
-        'today': timezone.now().date()
-    }
-    
-    return render(request, 'booking_detail.html', context)
 
 @login_required
 def booking_edit(request, pk):
@@ -791,179 +727,61 @@ def salesman_pending_bookings_view(request):
     return render(request, 'salesman_pending_bookings.html', context)
 
 
-# Salesman-specific booking approval (redirects back to salesman list)
 @login_required
-@group_required('salesman')
-def salesman_booking_approve(request, pk):
+@admin_required
+def booking_audio_upload(request, pk):
+    """Upload audio file to a booking - Admin only, standalone endpoint"""
     booking = get_object_or_404(Booking, pk=pk)
-
-    is_salesman = request.user.groups.filter(name='salesman').exists()
-
-    if not (is_salesman and booking.salesman == request.user):
-        messages.error(request, "You don't have permission to approve this booking.")
-        return redirect('salesman_pending_bookings')
-
-    if not booking.can_be_approved():
-        messages.error(request, 'This booking cannot be approved.')
-        return redirect('salesman_pending_bookings')
-
-    if request.method == 'POST':
-        booking.status = 'confirmed'
-        booking.approved_at = timezone.now()
-        booking.approved_by = request.user
-        booking.save()
-
-        try:
-            send_booking_confirmation(booking)
-        except Exception as e:
-            logger.warning(f"Failed to send booking confirmation: {str(e)}")
-
-        try:
-            send_booking_approved_notification(booking)
-        except Exception as e:
-            logger.warning(f"Failed to send approval notification: {str(e)}")
-
-        messages.success(
-            request,
-            f'✓ Booking approved for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
-            f'Confirmation emails sent to all parties.'
-        )
-
-        from .signals import create_audit_log
-        create_audit_log(
-            user=request.user,
-            action='update',
-            entity_type='Booking',
-            entity_id=booking.id,
-            changes={'status': 'confirmed', 'approved_by': request.user.get_full_name()},
-            request=request
-        )
-
-        return redirect('salesman_pending_bookings')
-
-    return render(request, 'salesman_booking_approve.html', {'booking': booking})
-
-
-# Salesman-specific booking decline (redirects back to salesman list)
-@login_required
-@group_required('salesman')
-def salesman_booking_decline(request, pk):
-    booking = get_object_or_404(Booking, pk=pk)
-
-    is_salesman = request.user.groups.filter(name='salesman').exists()
-
-    if not (is_salesman and booking.salesman == request.user):
-        messages.error(request, "You don't have permission to decline this booking.")
-        return redirect('salesman_pending_bookings')
-
-    if not booking.can_be_declined():
-        messages.error(request, 'This booking cannot be declined.')
-        return redirect('salesman_pending_bookings')
-
-    if request.method == 'POST':
-        decline_reason = request.POST.get('decline_reason', '').strip()
-        if not decline_reason:
-            messages.error(request, 'Please provide a reason for declining.')
-            return render(request, 'booking_decline.html', {'booking': booking})
-
-        booking.status = 'declined'
-        booking.declined_at = timezone.now()
-        booking.declined_by = request.user
-        booking.decline_reason = decline_reason
-        booking.save()
-
-        try:
-            send_booking_declined_notification(booking)
-        except Exception as e:
-            logger.warning(f"Failed to send decline notification: {str(e)}")
-
-        messages.success(
-            request,
-            f'✗ Booking declined for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
-            f'Notification sent to {booking.created_by.get_full_name()}.'
-        )
-
-        from .signals import create_audit_log
-        create_audit_log(
-            user=request.user,
-            action='update',
-            entity_type='Booking',
-            entity_id=booking.id,
-            changes={
-                'status': 'declined',
-                'declined_by': request.user.get_full_name(),
-                'decline_reason': decline_reason,
-            },
-            request=request,
-        )
-
-        return redirect('salesman_pending_bookings')
-
-    return render(request, 'salesman_booking_decline.html', {'booking': booking})
-
-@login_required
-def booking_approve(request, pk):
-    """Approve a pending booking - Admin or assigned Salesman"""
-    booking = get_object_or_404(Booking, pk=pk)
-
-    # Check permissions
-    is_admin = request.user.is_staff
-
-    if not is_admin:
-        messages.error(request, "You don't have permission to approve this booking.")
-        return redirect('pending_bookings')
-
-    if not booking.can_be_approved():
-        messages.error(request, 'This booking cannot be approved.')
-        return redirect('pending_bookings')
-
-    # Instantiate the form
-    if request.method == 'POST':
-        form = AudioForm(request.POST, request.FILES, instance=booking, request=request)
-        if form.is_valid():
-            # Save audio_file update
-            form.save(commit=False)
-
-            # Update booking status
-            booking.status = 'confirmed'
-            booking.approved_at = timezone.now()
-            booking.approved_by = request.user
-            booking.save()
-
-            # Send confirmation emails
-            try:
-                send_booking_confirmation(booking)
-            except Exception as e:
-                logger.warning(f"Failed to send booking confirmation: {str(e)}")
-
-            # Send approval notification
-            try:
-                send_booking_approved_notification(booking)
-            except Exception as e:
-                logger.warning(f"Failed to send approval notification: {str(e)}")
-
-            messages.success(
-                request,
-                f'✓ Booking approved for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
-                f'Confirmation emails sent to all parties.'
-            )
-
-            # Log the approval
-            from .signals import create_audit_log
-            create_audit_log(
-                user=request.user,
-                action='update',
-                entity_type='Booking',
-                entity_id=booking.id,
-                changes={'status': 'confirmed', 'approved_by': request.user.get_full_name()},
-                request=request
-            )
-
-            return redirect('pending_bookings')
+    
+    if request.method != 'POST':
+        messages.error(request, 'Invalid request method.')
+        return redirect('booking_detail', pk=pk)
+    
+    audio_file = request.FILES.get('audio_file')
+    
+    if not audio_file:
+        messages.error(request, 'Please select an audio file to upload.')
+    elif not audio_file.content_type.startswith('audio/'):
+        messages.error(request, 'Invalid file type. Please upload an audio file.')
+    elif audio_file.size > 50 * 1024 * 1024:
+        messages.error(request, 'Audio file must be less than 50MB.')
     else:
-        form = AudioForm(instance=booking, request=request)
+        # Save the audio file
+        booking.audio_file = audio_file
+        booking.save(update_fields=['audio_file'])
+        messages.success(request, 'Audio file uploaded successfully!')
+    
+    # Determine where to redirect based on referer
+    referer = request.META.get('HTTP_REFERER', '')
+    if 'approve' in referer:
+        return redirect('booking_approve', pk=pk)
+    else:
+        return redirect('booking_detail', pk=pk)
 
-    return render(request, 'booking_approve.html', {'booking': booking, 'form': form})
+
+@login_required
+@admin_required
+def booking_audio_delete(request, pk):
+    """Delete audio file from a booking - Admin only"""
+    booking = get_object_or_404(Booking, pk=pk)
+    
+    if request.method == 'POST':
+        if booking.audio_file:
+            # Delete the file from storage
+            booking.audio_file.delete()
+            booking.save(update_fields=['audio_file'])
+            messages.success(request, 'Audio file deleted successfully!')
+        else:
+            messages.warning(request, 'No audio file to delete.')
+    
+    # Determine where to redirect based on referer
+    referer = request.META.get('HTTP_REFERER', '')
+    if 'approve' in referer:
+        return redirect('booking_approve', pk=pk)
+    else:
+        return redirect('booking_detail', pk=pk)
+    
+
 
 @login_required
 def booking_cancel(request, pk):
@@ -1005,19 +823,164 @@ def booking_cancel(request, pk):
     
     return render(request, 'booking_cancel.html', {'form': form, 'booking': booking})
 
+# ============================================================
+# FIXED: Booking Status Management Views
+# ============================================================
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.http import HttpResponseForbidden
+from django.utils import timezone
+from .models import Booking
+from .utils import (
+    send_booking_confirmation,
+    send_booking_approved_notification,
+    send_booking_declined_notification,
+)
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@login_required
+def booking_detail(request, pk):
+    """
+    FIXED: Display booking details only - NO status changes here.
+    All status changes now go through dedicated views.
+    """
+    booking = get_object_or_404(Booking, pk=pk)
+
+    if not request.user.is_staff:
+        if booking.salesman != request.user and booking.created_by != request.user:
+            return HttpResponseForbidden("You don't have permission to view this booking.")
+    
+    context = {
+        'booking': booking,
+        'today': timezone.now().date()
+    }
+    
+    return render(request, 'booking_detail.html', context)
+
+
+@login_required
+def booking_approve(request, pk):
+    """
+    FIXED: Approve a pending booking (pending → confirmed).
+    - Admin only
+    - Validates state before changing
+    - Sends emails once only
+    - Creates audit log
+    - Double-submit protection
+    """
+    booking = get_object_or_404(Booking, pk=pk)
+
+    # Permission check
+    if not request.user.is_staff:
+        messages.error(request, "You don't have permission to approve this booking.")
+        return redirect('pending_bookings')
+
+    # State validation
+    if booking.status != 'pending':
+        messages.warning(request, f'Booking is already {booking.get_status_display().lower()}. No action taken.')
+        return redirect('booking_detail', pk=pk)
+
+    # Can approve check
+    if not booking.can_be_approved():
+        messages.error(request, 'This booking cannot be approved. It may be locked or invalid.')
+        return redirect('pending_bookings')
+
+    # Appointment date validation
+    if booking.appointment_date < timezone.now().date():
+        messages.error(request, 'Cannot approve a past appointment.')
+        return redirect('pending_bookings')
+
+    if request.method == 'POST':
+        try:
+            # Final state check before commit (double-submit protection)
+            booking.refresh_from_db()
+            if booking.status != 'pending':
+                messages.warning(request, 'This booking was already processed.')
+                return redirect('booking_detail', pk=pk)
+
+            # Update booking status
+            booking.status = 'confirmed'
+            booking.approved_at = timezone.now()
+            booking.approved_by = request.user
+            booking.save()
+
+            # Send notifications (with individual error handling)
+            confirmation_sent = False
+            approval_sent = False
+
+            try:
+                send_booking_confirmation(booking)
+                confirmation_sent = True
+            except Exception as e:
+                logger.warning(f"Confirmation email failed for booking {booking.id}: {str(e)}")
+
+            try:
+                send_booking_approved_notification(booking)
+                approval_sent = True
+            except Exception as e:
+                logger.warning(f"Approval notification failed for booking {booking.id}: {str(e)}")
+
+            # Create audit log
+            from .signals import create_audit_log
+            create_audit_log(
+                user=request.user,
+                action='update',
+                entity_type='Booking',
+                entity_id=booking.id,
+                changes={
+                    'status': 'confirmed',
+                    'approved_by': request.user.get_full_name(),
+                    'approved_at': booking.approved_at.isoformat(),
+                },
+                request=request
+            )
+
+            # Success message
+            email_status = "Confirmation emails sent" if (confirmation_sent and approval_sent) else "emails failed"
+            messages.success(
+                request,
+                f'✓ Booking approved for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. ({email_status})'
+            )
+
+            return redirect('pending_bookings')
+
+        except Exception as e:
+            logger.error(f"Error approving booking {pk}: {str(e)}")
+            messages.error(request, 'An error occurred while approving the booking. Please try again.')
+            return redirect('booking_detail', pk=pk)
+
+    # GET request - show confirmation page
+    return render(request, 'booking_approve.html', {'booking': booking})
+
+
 @login_required
 def booking_decline(request, pk):
-    """Decline a pending booking - Admin or assigned Salesman"""
+    """
+    FIXED: Decline a pending booking (pending → declined).
+    - Admin only
+    - Validates state before changing
+    - Requires decline reason
+    - Creates audit log
+    - Double-submit protection
+    """
     booking = get_object_or_404(Booking, pk=pk)
-    
-    # Check permissions
-    is_admin = request.user.is_staff
-    
-    # Only admin or the assigned salesman can decline
-    if not is_admin:
+
+    # Permission check
+    if not request.user.is_staff:
         messages.error(request, "You don't have permission to decline this booking.")
         return redirect('pending_bookings')
-    
+
+    # State validation
+    if booking.status != 'pending':
+        messages.warning(request, f'Booking is already {booking.get_status_display().lower()}. Cannot decline.')
+        return redirect('booking_detail', pk=pk)
+
+    # Can decline check
     if not booking.can_be_declined():
         messages.error(request, 'This booking cannot be declined.')
         return redirect('pending_bookings')
@@ -1029,42 +992,288 @@ def booking_decline(request, pk):
             messages.error(request, 'Please provide a reason for declining.')
             return render(request, 'booking_decline.html', {'booking': booking})
 
-        booking.status = 'declined'
-        booking.declined_at = timezone.now()
-        booking.declined_by = request.user
-        booking.decline_reason = decline_reason
-        booking.save()
-
-        # Send decline notification to remote agent who created it
         try:
-            send_booking_declined_notification(booking)
+            # Final state check before commit
+            booking.refresh_from_db()
+            if booking.status != 'pending':
+                messages.warning(request, 'This booking was already processed.')
+                return redirect('booking_detail', pk=pk)
+
+            # Update booking status
+            booking.status = 'declined'
+            booking.declined_at = timezone.now()
+            booking.declined_by = request.user
+            booking.decline_reason = decline_reason
+            booking.save()
+
+            # Send decline notification
+            notification_sent = False
+            try:
+                send_booking_declined_notification(booking)
+                notification_sent = True
+            except Exception as e:
+                logger.warning(f"Decline notification failed for booking {booking.id}: {str(e)}")
+
+            # Create audit log
+            from .signals import create_audit_log
+            create_audit_log(
+                user=request.user,
+                action='update',
+                entity_type='Booking',
+                entity_id=booking.id,
+                changes={
+                    'status': 'declined',
+                    'declined_by': request.user.get_full_name(),
+                    'decline_reason': decline_reason,
+                    'declined_at': booking.declined_at.isoformat(),
+                },
+                request=request
+            )
+
+            notification_status = "Notification sent" if notification_sent else "notification failed"
+            messages.success(
+                request,
+                f'✗ Booking declined for {booking.client.get_full_name()}. ({notification_status})'
+            )
+
+            return redirect('pending_bookings')
+
         except Exception as e:
-            logger.warning(f"Failed to send decline notification: {str(e)}")
+            logger.error(f"Error declining booking {pk}: {str(e)}")
+            messages.error(request, 'An error occurred while declining the booking. Please try again.')
+            return redirect('booking_detail', pk=pk)
 
-        messages.success(
-            request,
-            f'✗ Booking declined for {booking.client.get_full_name()} with {booking.salesman.get_full_name()}. '
-            f'Notification sent to {booking.created_by.get_full_name()}.'
-        )
-
-        # Log the decline
-        from .signals import create_audit_log
-        create_audit_log(
-            user=request.user,
-            action='update',
-            entity_type='Booking',
-            entity_id=booking.id,
-            changes={
-                'status': 'declined',
-                'declined_by': request.user.get_full_name(),
-                'decline_reason': decline_reason
-            },
-            request=request
-        )
-
-        return redirect('pending_bookings')
-
+    # GET request - show decline form
     return render(request, 'booking_decline.html', {'booking': booking})
+
+
+@login_required
+def booking_revert_to_pending(request, pk):
+    """
+    FIXED: Revert a confirmed booking back to pending (confirmed → pending).
+    - Admin only
+    - Cannot revert past appointments
+    - Clears all approval metadata
+    - Creates audit log
+    - Double-submit protection
+    """
+    booking = get_object_or_404(Booking, pk=pk)
+
+    # Permission check
+    if not request.user.is_staff:
+        messages.error(request, "You don't have permission to revert this booking.")
+        return redirect('booking_detail', pk=pk)
+
+    # State validation
+    if booking.status != 'confirmed':
+        messages.warning(request, f'Only confirmed bookings can be reverted. This booking is {booking.get_status_display().lower()}.')
+        return redirect('booking_detail', pk=pk)
+
+    # Date validation - cannot revert past appointments
+    if booking.appointment_date < timezone.now().date():
+        messages.error(request, 'Cannot revert past appointments.')
+        return redirect('booking_detail', pk=pk)
+
+    if booking.is_locked:
+        messages.error(request, 'Cannot revert a locked booking. Payroll has been finalized.')
+        return redirect('booking_detail', pk=pk)
+
+    if request.method == 'POST':
+        revert_reason = request.POST.get('revert_reason', '').strip()
+
+        try:
+            # Final state check
+            booking.refresh_from_db()
+            if booking.status != 'confirmed':
+                messages.warning(request, 'This booking was already processed.')
+                return redirect('booking_detail', pk=pk)
+
+            # Store old values for audit log
+            old_approved_by = booking.approved_by.get_full_name() if booking.approved_by else None
+
+            # Revert to pending and clear approval fields
+            booking.status = 'pending'
+            booking.approved_at = None
+            booking.approved_by = None
+            booking.save()
+
+            # Create audit log
+            from .signals import create_audit_log
+            create_audit_log(
+                user=request.user,
+                action='update',
+                entity_type='Booking',
+                entity_id=booking.id,
+                changes={
+                    'status': 'pending',
+                    'reverted_from': 'confirmed',
+                    'previous_approver': old_approved_by,
+                    'revert_reason': revert_reason if revert_reason else 'No reason provided',
+                    'reverted_at': timezone.now().isoformat(),
+                },
+                request=request
+            )
+
+            messages.success(
+                request,
+                f'✓ Booking reverted to pending for {booking.client.get_full_name()}.'
+            )
+
+            return redirect('booking_detail', pk=pk)
+
+        except Exception as e:
+            logger.error(f"Error reverting booking {pk}: {str(e)}")
+            messages.error(request, 'An error occurred while reverting the booking. Please try again.')
+            return redirect('booking_detail', pk=pk)
+
+    # GET request - show revert confirmation page
+    return render(request, 'booking_revert_to_pending.html', {'booking': booking})
+
+
+# ============================================================
+# Salesman-Specific Approval/Decline (for salesman workflow)
+# ============================================================
+
+@login_required
+@group_required('salesman')
+def salesman_booking_approve(request, pk):
+    """
+    Salesman approves their own bookings (pending → confirmed).
+    Uses same validation logic as admin approval.
+    """
+    booking = get_object_or_404(Booking, pk=pk)
+
+    # Salesman can only approve their own bookings
+    if booking.salesman != request.user:
+        messages.error(request, "You don't have permission to approve this booking.")
+        return redirect('salesman_pending_bookings')
+
+    # State validation
+    if booking.status != 'pending':
+        messages.warning(request, f'Booking is already {booking.get_status_display().lower()}.')
+        return redirect('salesman_pending_bookings')
+
+    if not booking.can_be_approved():
+        messages.error(request, 'This booking cannot be approved.')
+        return redirect('salesman_pending_bookings')
+
+    if request.method == 'POST':
+        try:
+            booking.refresh_from_db()
+            if booking.status != 'pending':
+                messages.warning(request, 'This booking was already processed.')
+                return redirect('salesman_pending_bookings')
+
+            booking.status = 'confirmed'
+            booking.approved_at = timezone.now()
+            booking.approved_by = request.user
+            booking.save()
+
+            try:
+                send_booking_confirmation(booking)
+                send_booking_approved_notification(booking)
+            except Exception as e:
+                logger.warning(f"Email send failed: {str(e)}")
+
+            from .signals import create_audit_log
+            create_audit_log(
+                user=request.user,
+                action='update',
+                entity_type='Booking',
+                entity_id=booking.id,
+                changes={'status': 'confirmed', 'approved_by': request.user.get_full_name()},
+                request=request
+            )
+
+            messages.success(
+                request,
+                f'✓ Booking approved for {booking.client.get_full_name()}. Confirmation emails sent.'
+            )
+
+            return redirect('salesman_pending_bookings')
+
+        except Exception as e:
+            logger.error(f"Error in salesman approval: {str(e)}")
+            messages.error(request, 'An error occurred. Please try again.')
+            return redirect('salesman_pending_bookings')
+
+    return render(request, 'salesman_booking_approve.html', {'booking': booking})
+
+
+@login_required
+@group_required('salesman')
+def salesman_booking_decline(request, pk):
+    """
+    Salesman declines their own bookings (pending → declined).
+    Uses same validation logic as admin decline.
+    """
+    booking = get_object_or_404(Booking, pk=pk)
+
+    # Salesman can only decline their own bookings
+    if booking.salesman != request.user:
+        messages.error(request, "You don't have permission to decline this booking.")
+        return redirect('salesman_pending_bookings')
+
+    # State validation
+    if booking.status != 'pending':
+        messages.warning(request, f'Booking is already {booking.get_status_display().lower()}.')
+        return redirect('salesman_pending_bookings')
+
+    if not booking.can_be_declined():
+        messages.error(request, 'This booking cannot be declined.')
+        return redirect('salesman_pending_bookings')
+
+    if request.method == 'POST':
+        decline_reason = request.POST.get('decline_reason', '').strip()
+
+        if not decline_reason:
+            messages.error(request, 'Please provide a reason for declining.')
+            return render(request, 'salesman_booking_decline.html', {'booking': booking})
+
+        try:
+            booking.refresh_from_db()
+            if booking.status != 'pending':
+                messages.warning(request, 'This booking was already processed.')
+                return redirect('salesman_pending_bookings')
+
+            booking.status = 'declined'
+            booking.declined_at = timezone.now()
+            booking.declined_by = request.user
+            booking.decline_reason = decline_reason
+            booking.save()
+
+            try:
+                send_booking_declined_notification(booking)
+            except Exception as e:
+                logger.warning(f"Notification send failed: {str(e)}")
+
+            from .signals import create_audit_log
+            create_audit_log(
+                user=request.user,
+                action='update',
+                entity_type='Booking',
+                entity_id=booking.id,
+                changes={
+                    'status': 'declined',
+                    'declined_by': request.user.get_full_name(),
+                    'decline_reason': decline_reason,
+                },
+                request=request,
+            )
+
+            messages.success(
+                request,
+                f'✗ Booking declined for {booking.client.get_full_name()}.'
+            )
+
+            return redirect('salesman_pending_bookings')
+
+        except Exception as e:
+            logger.error(f"Error in salesman decline: {str(e)}")
+            messages.error(request, 'An error occurred. Please try again.')
+            return redirect('salesman_pending_bookings')
+
+    return render(request, 'salesman_booking_decline.html', {'booking': booking})
 
 
 @login_required
@@ -2483,7 +2692,14 @@ def agent_registration(request):
 @login_required
 @admin_required
 def user_deactivate(request, pk):
-    """Deactivate user with proper handling of related records"""
+    """
+    FIXED: Deactivate user with proper handling of related records.
+    
+    New Features:
+    - If deactivating without reassignment: reactivate deactivated slots
+    - If reassigning: transfer slots and reactivate where possible
+    - Audit log tracks all changes
+    """
     user = get_object_or_404(User, pk=pk)
     
     # Prevent deactivating yourself
@@ -2493,7 +2709,9 @@ def user_deactivate(request, pk):
     
     # Check what will be affected
     bookings_as_salesman = Booking.objects.filter(salesman=user).count()
-    timeslots = AvailableTimeSlot.objects.filter(salesman=user).count()
+    timeslots_active = AvailableTimeSlot.objects.filter(salesman=user, is_active=True).count()
+    timeslots_inactive = AvailableTimeSlot.objects.filter(salesman=user, is_active=False).count()
+    timeslots_total = timeslots_active + timeslots_inactive
     active_bookings = Booking.objects.filter(
         salesman=user,
         status__in=['pending', 'confirmed']
@@ -2503,27 +2721,52 @@ def user_deactivate(request, pk):
         action = request.POST.get('action')
         
         if action == 'deactivate_only':
-            """Deactivate user without reassigning - deactivate slots and bookings"""
+            """
+            Deactivate user WITHOUT reassigning bookings/slots.
+            - Cancel all pending/confirmed bookings
+            - Deactivate all active slots
+            - Keep inactive slots as-is (don't reactivate them)
+            """
             try:
                 with transaction.atomic():
-                    # Deactivate all timeslots
-                    deactivated_slots = AvailableTimeSlot.objects.filter(salesman=user).update(is_active=False)
-                    
                     # Cancel all pending/confirmed bookings
                     canceled_bookings = Booking.objects.filter(
                         salesman=user,
                         status__in=['pending', 'confirmed']
                     ).update(status='canceled', canceled_by=request.user)
                     
+                    # Deactivate all active timeslots
+                    deactivated_slots = AvailableTimeSlot.objects.filter(
+                        salesman=user,
+                        is_active=True
+                    ).update(is_active=False)
+                    
                     # Deactivate the user
                     user.is_active = False
                     user.is_active_salesman = False
                     user.save()
                     
+                    # Create audit log
+                    from .signals import create_audit_log
+                    create_audit_log(
+                        user=request.user,
+                        action='update',
+                        entity_type='User',
+                        entity_id=user.id,
+                        changes={
+                            'is_active': False,
+                            'is_active_salesman': False,
+                            'action_type': 'deactivate_only',
+                            'canceled_bookings': canceled_bookings,
+                            'deactivated_slots': deactivated_slots,
+                        },
+                        request=request
+                    )
+                    
                     messages.success(
                         request,
                         f'✓ User "{user.get_full_name()}" deactivated successfully. '
-                        f'Deactivated {deactivated_slots} time slot(s) and canceled {canceled_bookings} booking(s).'
+                        f'Canceled {canceled_bookings} booking(s) and deactivated {deactivated_slots} slot(s).'
                     )
             except Exception as e:
                 logger.error(f"Error deactivating user {user.pk}: {str(e)}")
@@ -2531,21 +2774,31 @@ def user_deactivate(request, pk):
                 return render(request, 'user_deactivate.html', {
                     'user': user,
                     'bookings_as_salesman': bookings_as_salesman,
-                    'timeslots': timeslots,
+                    'timeslots_total': timeslots_total,
+                    'timeslots_active': timeslots_active,
+                    'timeslots_inactive': timeslots_inactive,
                     'active_bookings': active_bookings,
                 })
             
             return redirect('users')
         
         elif action == 'reassign_and_deactivate':
-            """Reassign bookings and timeslots before deactivating"""
+            """
+            Reassign bookings and timeslots before deactivating.
+            - Transfer active slots to new salesman (reactivate if needed)
+            - Transfer inactive slots as-is
+            - Reassign all bookings
+            - Handle conflicts properly
+            """
             new_salesman_id = request.POST.get('new_salesman')
             if not new_salesman_id:
                 messages.error(request, 'Please select a salesman to reassign to.')
                 return render(request, 'user_deactivate.html', {
                     'user': user,
                     'bookings_as_salesman': bookings_as_salesman,
-                    'timeslots': timeslots,
+                    'timeslots_total': timeslots_total,
+                    'timeslots_active': timeslots_active,
+                    'timeslots_inactive': timeslots_inactive,
                     'active_bookings': active_bookings,
                 })
             
@@ -2558,12 +2811,14 @@ def user_deactivate(request, pk):
                         salesman=new_salesman
                     )
                     
-                    # Reassign timeslots - handle duplicates by deleting conflicting slots first
+                    # Handle timeslots with reactivation logic
                     user_slots = AvailableTimeSlot.objects.filter(salesman=user)
                     reassigned_timeslots = 0
+                    reactivated_slots = 0
+                    deleted_duplicate_slots = 0
                     
                     for slot in user_slots:
-                        # Check if target salesman already has a slot at this time
+                        # Check if target salesman already has a slot at this exact time
                         existing_slot = AvailableTimeSlot.objects.filter(
                             salesman=new_salesman,
                             date=slot.date,
@@ -2572,40 +2827,86 @@ def user_deactivate(request, pk):
                         ).first()
                         
                         if existing_slot:
-                            # If target salesman already has this slot, just delete the user's slot
-                            slot.delete()
+                            # If target salesman already has this slot:
+                            # - If existing is inactive and current is active: delete current, reactivate existing
+                            # - Otherwise: delete current
+                            if not existing_slot.is_active and slot.is_active:
+                                existing_slot.is_active = True
+                                existing_slot.save()
+                                slot.delete()
+                                reactivated_slots += 1
+                            else:
+                                slot.delete()
+                            deleted_duplicate_slots += 1
                         else:
-                            # Reassign the slot to new salesman
+                            # No conflict, transfer the slot
                             slot.salesman = new_salesman
-                            slot.created_by = new_salesman  # Update created_by to avoid PROTECT constraint
+                            slot.created_by = new_salesman
+                            
+                            # If slot was inactive, reactivate it for the new salesman
+                            if not slot.is_active:
+                                slot.is_active = True
+                                reactivated_slots += 1
+                            
                             slot.save()
                             reassigned_timeslots += 1
                     
                     # Reassign payroll adjustments
                     PayrollAdjustment.objects.filter(user=user).update(user=new_salesman)
                     
-                    # Reassign created_by references in various models
+                    # Reassign created_by references
                     Client.objects.filter(created_by=user).update(created_by=new_salesman)
                     Booking.objects.filter(created_by=user).update(created_by=new_salesman)
                     PayrollAdjustment.objects.filter(created_by=user).update(created_by=new_salesman)
+                    AvailableTimeSlot.objects.filter(created_by=user).update(created_by=new_salesman)
                     
                     # Deactivate the user
                     user.is_active = False
                     user.is_active_salesman = False
                     user.save()
                     
-                    messages.success(
-                        request,
-                        f'✓ User "{user.get_full_name()}" deactivated. '
-                        f'Reassigned {reassigned_bookings} booking(s) and {reassigned_timeslots} timeslot(s) to {new_salesman.get_full_name()}.'
+                    # Create audit log with detailed changes
+                    from .signals import create_audit_log
+                    create_audit_log(
+                        user=request.user,
+                        action='update',
+                        entity_type='User',
+                        entity_id=user.id,
+                        changes={
+                            'is_active': False,
+                            'is_active_salesman': False,
+                            'action_type': 'reassign_and_deactivate',
+                            'new_salesman': new_salesman.get_full_name(),
+                            'reassigned_bookings': reassigned_bookings,
+                            'reassigned_timeslots': reassigned_timeslots,
+                            'reactivated_inactive_slots': reactivated_slots,
+                            'deleted_duplicate_slots': deleted_duplicate_slots,
+                            'timeslots_total_transferred': reassigned_timeslots + reactivated_slots + deleted_duplicate_slots,
+                        },
+                        request=request
                     )
+                    
+                    summary_msg = (
+                        f'✓ User "{user.get_full_name()}" deactivated. '
+                        f'Reassigned {reassigned_bookings} booking(s) and {reassigned_timeslots} slot(s) to {new_salesman.get_full_name()}.'
+                    )
+                    
+                    if reactivated_slots > 0:
+                        summary_msg += f' Reactivated {reactivated_slots} previously deactivated slot(s).'
+                    
+                    if deleted_duplicate_slots > 0:
+                        summary_msg += f' Removed {deleted_duplicate_slots} duplicate slot(s).'
+                    
+                    messages.success(request, summary_msg)
             except Exception as e:
                 logger.error(f"Error deactivating user {user.pk}: {str(e)}")
                 messages.error(request, f'Error deactivating user. Please try again.')
                 return render(request, 'user_deactivate.html', {
                     'user': user,
                     'bookings_as_salesman': bookings_as_salesman,
-                    'timeslots': timeslots,
+                    'timeslots_total': timeslots_total,
+                    'timeslots_active': timeslots_active,
+                    'timeslots_inactive': timeslots_inactive,
                     'active_bookings': active_bookings,
                 })
             
@@ -2620,7 +2921,9 @@ def user_deactivate(request, pk):
     context = {
         'user': user,
         'bookings_as_salesman': bookings_as_salesman,
-        'timeslots': timeslots,
+        'timeslots_total': timeslots_total,
+        'timeslots_active': timeslots_active,
+        'timeslots_inactive': timeslots_inactive,
         'active_bookings': active_bookings,
         'has_active_bookings': active_bookings > 0,
         'replacement_salesmen': replacement_salesmen,
@@ -2632,7 +2935,15 @@ def user_deactivate(request, pk):
 @login_required
 @admin_required
 def user_reactivate(request, pk):
-    """Reactivate a deactivated user"""
+    """
+    FIXED: Reactivate a deactivated user.
+    
+    New Features:
+    - Reactivates deactivated slots that were deactivated with the user
+    - Handles salesman role properly
+    - Generates new slots if none exist
+    - Complete audit logging
+    """
     user = get_object_or_404(User, pk=pk)
     
     if user.is_active:
@@ -2651,39 +2962,73 @@ def user_reactivate(request, pk):
                 
                 user.save()
                 
-                # Check if user has slots, if not generate them
-                if user.is_active_salesman:
-                    existing_slots = AvailableTimeSlot.objects.filter(salesman=user).count()
-                    if existing_slots == 0:
-                        # Generate slots for this salesman
+                # Get all slots associated with this user
+                all_slots = AvailableTimeSlot.objects.filter(salesman=user)
+                
+                # Reactivate inactive slots
+                reactivated_slots = all_slots.filter(is_active=False).update(is_active=True)
+                
+                # Count active slots
+                active_slots = all_slots.filter(is_active=True).count()
+                
+                # If user is a salesman and has no slots at all, generate new ones
+                if user.is_active_salesman and active_slots == 0:
+                    from .utils import generate_timeslots_for_cycle
+                    try:
+                        # Try async generation first
                         from .tasks import generate_timeslots_async
-                        try:
-                            generate_timeslots_async.delay(user.id)
-                            messages.success(
-                                request,
-                                f'✓ User "{user.get_full_name()}" reactivated successfully. '
-                                f'Slot generation scheduled in background.'
-                            )
-                        except Exception as e:
-                            # Fallback to local generation
-                            from .utils import generate_timeslots_for_cycle
-                            generate_timeslots_for_cycle(salesman=user)
-                            messages.success(
-                                request,
-                                f'✓ User "{user.get_full_name()}" reactivated successfully. '
-                                f'Slots generated locally.'
-                            )
-                    else:
+                        generate_timeslots_async.delay(user.id)
+                        slot_generation_msg = 'Slot generation scheduled in background.'
+                    except Exception:
+                        # Fallback to local generation
+                        generate_timeslots_for_cycle(salesman=user)
+                        slot_generation_msg = 'Slots generated locally.'
+                else:
+                    slot_generation_msg = None
+                
+                # Create audit log
+                from .signals import create_audit_log
+                create_audit_log(
+                    user=request.user,
+                    action='update',
+                    entity_type='User',
+                    entity_id=user.id,
+                    changes={
+                        'is_active': True,
+                        'is_active_salesman': user.is_active_salesman,
+                        'action_type': 'reactivate',
+                        'reactivated_slots': reactivated_slots,
+                        'active_slots_after': active_slots,
+                    },
+                    request=request
+                )
+                
+                # Build success message
+                if reactivated_slots > 0:
+                    messages.success(
+                        request,
+                        f'✓ User "{user.get_full_name()}" reactivated successfully. '
+                        f'Reactivated {reactivated_slots} previously deactivated slot(s). '
+                        f'Total active slots: {active_slots}.'
+                    )
+                elif active_slots > 0:
+                    messages.success(
+                        request,
+                        f'✓ User "{user.get_full_name()}" reactivated successfully. '
+                        f'User has {active_slots} existing active slot(s).'
+                    )
+                else:
+                    if slot_generation_msg:
                         messages.success(
                             request,
                             f'✓ User "{user.get_full_name()}" reactivated successfully. '
-                            f'User has {existing_slots} existing slots.'
+                            f'{slot_generation_msg}'
                         )
-                else:
-                    messages.success(
-                        request,
-                        f'✓ User "{user.get_full_name()}" reactivated successfully.'
-                    )
+                    else:
+                        messages.success(
+                            request,
+                            f'✓ User "{user.get_full_name()}" reactivated successfully.'
+                        )
                     
         except Exception as e:
             logger.error(f"Error reactivating user {user.pk}: {str(e)}")

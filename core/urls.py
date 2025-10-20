@@ -34,6 +34,9 @@ urlpatterns = [
     path('bookings/pending/', views.pending_bookings_view, name='pending_bookings'),
     path('bookings/<int:pk>/approve/', views.booking_approve, name='booking_approve'),
     path('bookings/<int:pk>/decline/', views.booking_decline, name='booking_decline'),
+    path('booking/<int:pk>/revert-to-pending/', views.booking_revert_to_pending, name='booking_revert_to_pending'),
+    path('booking/<int:pk>/audio/upload/', views.booking_audio_upload, name='booking_audio_upload'),
+    path('booking/<int:pk>/audio/delete/', views.booking_audio_delete, name='booking_audio_delete'),
     
     # Booking Approvals (Salesman)
     path('salesman/bookings/pending/', views.salesman_pending_bookings_view, name='salesman_pending_bookings'),

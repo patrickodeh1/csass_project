@@ -429,9 +429,9 @@ class BookingForm(forms.ModelForm):
             self.add_error('zoom_link', 'A meeting link is required for Zoom appointments.')
         if appointment_type == 'in_person' and not meeting_address:
             self.add_error('meeting_address', 'A meeting address is required for in-person appointments.')
-        if appointment_type == 'in_person' and not location:
+        """if appointment_type == 'in_person' and not location:
             self.add_error('location', 'Location (State/City) is required for in-person appointments.')
-            
+            """
         
         if all([salesman, appointment_date, appointment_time, appointment_type]):
             # Determine if we should skip availability validation
@@ -456,7 +456,6 @@ class BookingForm(forms.ModelForm):
             date = appointment_date
             available_slots = AvailableTimeSlot.objects.filter(
                 salesman=salesman,
-                location=location,
                 date=date,
                 appointment_type=appointment_type,
                 is_active=True
@@ -581,11 +580,6 @@ class BookingForm(forms.ModelForm):
             booking.save()
         
         return booking
-    
-class AudioForm(BookingForm):
-    class Meta(BookingForm.Meta):
-        fields = ['audio_file']
-    
 
 class CancelBookingForm(forms.Form):
     cancellation_reason = forms.ChoiceField(

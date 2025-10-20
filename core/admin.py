@@ -34,6 +34,9 @@ admin.site.register(PayrollAdjustment)
 
 
 admin.site.register(SystemConfig)
+admin.site.site_header = "CSASS Administration"
+admin.site.site_title = "CSASS Admin Portal"
+admin.site.index_title = "Welcome to CSASS Admin Portal"
 
 
 @admin.register(AuditLog)

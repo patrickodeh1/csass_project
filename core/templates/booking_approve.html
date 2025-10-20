@@ -49,6 +49,13 @@
                     </div>
                     {% endif %}
 
+                    {% if booking.meeting_address %}
+                    <div class="mb-3">
+                        <strong>Meeting Address:</strong><br>
+                        {{ booking.meeting_address }}
+                    </div>
+                    {% endif %}
+
                     <div class="mb-3">
                         <strong>Submitted By:</strong><br>
                         {{ booking.created_by.get_full_name }}
@@ -68,18 +75,59 @@
                         <p class="border p-2 rounded">{{ booking.notes }}</p>
                     </div>
                     {% endif %}
-                    <form method="post" enctype="multipart/form-data" class="mt-4">
-                        {% csrf_token %}
-                        {% if request.user.is_staff %}
-                            <div class="col-12">
-                                <label for="{{ form.audio_file.id_for_label }}" class="form-label fw-bold">Audio (Admin only)</label>
-                                {{ form.audio_file }}
-                                <div class="text-danger small mt-1">{{ form.audio_file.errors }}</div>
-                            </div>
+
+                    <!-- Audio Display/Upload Section (Admin Only) - SEPARATE FORM -->
+                    {% if request.user.is_staff %}
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2"><i class="bi bi-mic"></i> Audio Recording (Admin Only)</h6>
+                        {% if booking.audio_file %}
+                        <audio controls preload="none" style="width: 100%" class="mb-2">
+                            <source src="{{ booking.audio_file.url }}">
+                            Your browser does not support the audio element.
+                        </audio>
+                        <div class="d-flex gap-2 align-items-center mb-2">
+                            <p class="text-muted small mb-0">Current audio file uploaded.</p>
+                            <form method="post" action="{% url 'booking_audio_delete' booking.id %}" style="display: inline;" onsubmit="return confirm('Delete this audio file?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="bi bi-trash"></i> Delete
+                                </button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <p class="text-muted small mb-2">No audio file uploaded yet.</p>
                         {% endif %}
-                        <div class="d-flex gap-2 justify-content-end">
+                        
+                        <form method="post" enctype="multipart/form-data" action="{% url 'booking_audio_upload' booking.id %}" class="mt-2">
+                            {% csrf_token %}
+                            <div class="input-group">
+                                <input type="file" name="audio_file" class="form-control" accept="audio/*" required>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-upload"></i> Upload Audio
+                                </button>
+                            </div>
+                            <small class="form-text text-muted">Upload or replace audio recording for this booking.</small>
+                        </form>
+                    </div>
+                    {% elif booking.audio_file %}
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2"><i class="bi bi-mic"></i> Audio</h6>
+                        <audio controls preload="none" style="width: 100%">
+                            <source src="{{ booking.audio_file.url }}">
+                            Your browser does not support the audio element.
+                        </audio>
+                    </div>
+                    {% endif %}
+
+                    <!-- Approval Form -  -->
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="d-flex gap-2 justify-content-end border-top pt-3">
                             <a href="{% url 'pending_bookings' %}" class="btn btn-secondary">
                                 <i class="bi bi-arrow-left"></i> Back
+                            </a>
+                            <a href="{% url 'booking_edit' booking.id %}" class="btn btn-secondary">
+                                <i class="bi bi-pencil-fill"></i> Edit
                             </a>
                             <button type="submit" class="btn btn-success">
                                 <i class="bi bi-check-circle"></i> Approve & Send Confirmation
@@ -92,4 +140,3 @@
     </div>
 </div>
 {% endblock %}
-

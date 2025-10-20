@@ -1,15 +1,5 @@
 # Celery Setup Guide
 
-## Performance Optimizations Implemented
-
-✅ **All performance issues have been fixed:**
-
-1. **Salesman creation is now fast** - Slot generation runs asynchronously in background
-2. **Bulk slot creation** - Reduced from ~1400 individual queries to ~7 bulk inserts
-3. **SystemConfig auto-creation** - No more manual shell commands needed
-4. **Fixed AvailabilityCycle bug** - Removed broken slot generation code
-5. **Fixed management commands** - Corrected import errors
-
 ## Setup Instructions
 
 ### 1. Install Dependencies

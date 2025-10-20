@@ -88,7 +88,7 @@
               <!-- Location Field (for in-person appointments) -->
               <div class="col-12" id="location-field-wrapper">
                 <label for="{{ form.location.id_for_label }}" class="form-label fw-bold">
-                  State or City {% if form.initial.appointment_type == 'in_person' %}*{% endif %}
+                  State or City {% if form.initial.appointment_type == 'in_person' %}{% endif %}
                 </label>
                 {% if request.user.is_staff %}
                   {{ form.location }}
@@ -145,16 +145,17 @@
                 <div class="text-danger small mt-1">{{ form.zoom_link.errors }}</div>
               </div>
               
-              <!-- Meeting Address - Editable for Admin -->
+              <!-- Meeting Address - Editable for Admin and remote agent-->
               <div class="col-12" id="address-field-wrapper" style="display: none;">
                 <label for="{{ form.meeting_address.id_for_label }}" class="form-label fw-bold">Meeting Address *</label>
-                {% if request.user.is_staff %}
+                {{ form.meeting_address }}
+                <!--{% if request.user.is_staff %}
                   {{ form.meeting_address }}
                 {% else %}
-                  <textarea class="form-control" readonly disabled>{{ form.meeting_address.value|default:'' }}</textarea>
-                  {{ form.meeting_address.as_hidden }}
+                  <textarea class="form-control"  >{{ form.meeting_address.value|default:'' }}</textarea>
+                  {{ form.meeting_address }}
                 {% endif %}
-                <div class="text-danger small mt-1">{{ form.meeting_address.errors }}</div>
+                <div class="text-danger small mt-1">{{ form.meeting_address.errors }}</div>-->
               </div>
               
               <div class="col-12">
